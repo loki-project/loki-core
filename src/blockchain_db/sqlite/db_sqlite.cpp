@@ -28,6 +28,8 @@
 #include "db_sqlite.h"
 
 #include <SQLiteCpp/SQLiteCpp.h>
+#include <SQLiteCpp/VariadicBind.h>
+#include <sqlite3.h>
 
 #include <string>
 #include <iostream>
@@ -50,8 +52,6 @@ void BlockchainSQLite::load_database(std::optional<fs::path> file)
   if (m_storage)
     throw std::runtime_error("Reloading database not supported");  // TODO
 
-  // sqlite_orm treats empty-string as an indicator to load a memory-backed database, which we'll
-  // use if file is an empty-optional
   std::string fileString;
   if (file.has_value())
   {
@@ -60,93 +60,132 @@ void BlockchainSQLite::load_database(std::optional<fs::path> file)
   }
   else
   {
+    fileString = ":memory:";
     MINFO("Loading memory-backed sqliteDB");
   }
 
-  m_storage = std::make_unique<SQLite::Database>(db(fileString));
-  m_storage->sync_schema(true);
+  m_storage = std::make_unique<SQLite::Database>(SQLite::Database{fileString});
 
+  if (!m_storage->tableExists("batch_sn_payments")) {
+    create_schema();
+  }
+
+}
+
+void BlockchainSQLite::create_schema() {
+
+	SQLite::Transaction transaction{*m_storage};
+
+	m_storage->exec(R"(
+CREATE TABLE batch_sn_payments (
+    address BLOB NOT NULL PRIMARY KEY,
+    amount INTEGER NOT NULL,
+    height INTEGER NOT NULL,
+    UNIQUE(address)
+    CHECK(amount >= 0)
+);
+
+CREATE TRIGGER batch_payments_delete_empty
+AFTER UPDATE ON batch_sn_payments FOR EACH ROW WHEN NEW.amount = 0 THEN DELETE FROM batch_sn_payments WHERE address = NEW.address;
+	)");
+
+	transaction.commit();
+
+	MINFO("Database setup complete");
+} 
+
+std::optional<uint64_t> BlockchainSQLite::retrieve_amount_by_address(const std::string& address) {
+  SQLite::Statement st{*m_storage, "SELECT amount FROM batch_sn_payments WHERE address = ?"};
+  st.bind(1, address);
+  std::optional<uint64_t> amount;
+  while (st.executeStep()) {
+    assert(!amount);
+    amount = st.getColumn(0).getInt();
+  }
+  return amount;
 }
 
 // tuple (Address, amount, height)
 bool BlockchainSQLite::add_sn_payments(cryptonote::network_type nettype, std::vector<cryptonote::reward_payout>& payments, uint64_t height)
 {
-  using namespace sqlite_orm;
+	SQLite::Transaction transaction{*m_storage};
+
+  SQLite::Statement insert_payment{*m_storage,
+    "INSERT INTO batch_sn_payments (address, amount, height) VALUES (?, ?, ?)"};
+
+  SQLite::Statement update_payment{*m_storage,
+    "UPDATE batch_sn_payments SET amount = ? WHERE address = ?"};
 
   for (auto& payment: payments) {
     std::string address_str = cryptonote::get_account_address_as_str(nettype, 0, payment.address);
-    if( auto prev_entry = m_storage->get_pointer<cryptonote::batch_sn_payments>(address_str)){
+    auto prev_amount = retrieve_amount_by_address(address_str);
+    if(prev_amount.has_value()){
       MINFO("Record found for SN reward contributor, adding to database");
-      m_storage->update_all(
-        set(
-          c(&cryptonote::batch_sn_payments::amount) = (prev_entry->amount + payment.amount)),
-        where(c(&cryptonote::batch_sn_payments::address) = prev_entry->address));
+      update_payment.bind(*prev_amount + payment.amount, address_str);
     } else {
-        MINFO("No record found for SN reward contributor, adding to database");
-        m_storage->replace(cryptonote::batch_sn_payments{address_str, payment.amount, height});
+      MINFO("No record found for SN reward contributor, adding to database");
+      insert_payment.bind(address_str, payment.amount, height);
     }
   };
-return true;
+  return true;
 }
 
 // tuple (Address, amount)
 bool BlockchainSQLite::subtract_sn_payments(cryptonote::network_type nettype, std::vector<cryptonote::reward_payout>& payments, uint64_t height)
 {
-  using namespace sqlite_orm;
+  //for (auto& payment: payments) {
+    //std::string address_str = cryptonote::get_account_address_as_str(nettype, 0, payment.address);
+    //auto prev_entry = m_storage->get<cryptonote::batch_sn_payments>(address_str);
+    //if (payment.amount > prev_entry.amount)
+      //return false;
+    //m_storage->update_all(
+        //set(
+          //c(&cryptonote::batch_sn_payments::amount) = (prev_entry.amount - payment.amount),
+          //c(&cryptonote::batch_sn_payments::height) = height),
+        //where(c(&cryptonote::batch_sn_payments::address) = prev_entry.address));
 
-  for (auto& payment: payments) {
-    std::string address_str = cryptonote::get_account_address_as_str(nettype, 0, payment.address);
-    auto prev_entry = m_storage->get<cryptonote::batch_sn_payments>(address_str);
-    if (payment.amount > prev_entry.amount)
-      return false;
-    m_storage->update_all(
-        set(
-          c(&cryptonote::batch_sn_payments::amount) = (prev_entry.amount - payment.amount),
-          c(&cryptonote::batch_sn_payments::height) = height),
-        where(c(&cryptonote::batch_sn_payments::address) = prev_entry.address));
-
-    // TODO: sean removing sqlite orm. amount == 0 isnt working, so workaround with amount <= 0 and amount >= 0
-    m_storage->remove_all<cryptonote::batch_sn_payments>(where(c(&cryptonote::batch_sn_payments::amount) <= 0 and c(&cryptonote::batch_sn_payments::amount) >= 0));
-  };
+    //// TODO: sean removing sqlite orm. amount == 0 isnt working, so workaround with amount <= 0 and amount >= 0
+    //m_storage->remove_all<cryptonote::batch_sn_payments>(where(c(&cryptonote::batch_sn_payments::amount) <= 0 and c(&cryptonote::batch_sn_payments::amount) >= 0));
+  //};
 return true;
 }
 
 std::optional<std::vector<cryptonote::reward_payout>> BlockchainSQLite::get_sn_payments(cryptonote::network_type nettype, uint64_t height)
 {
 
-const auto& conf = get_config(nettype);
-using namespace sqlite_orm;
+//const auto& conf = get_config(nettype);
 
-//SELECT
-  //address,
-  //amount
-auto result = m_storage->select(
-    columns(
-      &cryptonote::batch_sn_payments::address,
-      &cryptonote::batch_sn_payments::amount)
-    ,
-    where(c(&cryptonote::batch_sn_payments::height) <= height - conf.BATCHING_INTERVAL and
-          c(&cryptonote::batch_sn_payments::amount) > conf.MIN_BATCH_PAYMENT_AMOUNT),
-    order_by(&cryptonote::batch_sn_payments::height),
-    limit(conf.LIMIT_BATCH_OUTPUTS));
+////SELECT
+  ////address,
+  ////amount
+//auto result = m_storage->select(
+    //columns(
+      //&cryptonote::batch_sn_payments::address,
+      //&cryptonote::batch_sn_payments::amount)
+    //,
+    //where(c(&cryptonote::batch_sn_payments::height) <= height - conf.BATCHING_INTERVAL and
+          //c(&cryptonote::batch_sn_payments::amount) > conf.MIN_BATCH_PAYMENT_AMOUNT),
+    //order_by(&cryptonote::batch_sn_payments::height),
+    //limit(conf.LIMIT_BATCH_OUTPUTS));
 
-  std::vector<cryptonote::reward_payout> payments;
+  //std::vector<cryptonote::reward_payout> payments;
 
-  for(auto &payment : result) {
-    //TODO sean remove
-    //std::cout << std::get<0>(payment) << '\t' << std::get<1>(payment) << std::endl;
-    cryptonote::address_parse_info info;
-    if (cryptonote::get_account_address_from_str(info, nettype, std::get<0>(payment)))
-    {
-      cryptonote::reward_payout pmt = {cryptonote::reward_type::snode, info.address, std::get<1>(payment)};
+  //for(auto &payment : result) {
+    ////TODO sean remove
+    ////std::cout << std::get<0>(payment) << '\t' << std::get<1>(payment) << std::endl;
+    //cryptonote::address_parse_info info;
+    //if (cryptonote::get_account_address_from_str(info, nettype, std::get<0>(payment)))
+    //{
+      //cryptonote::reward_payout pmt = {cryptonote::reward_type::snode, info.address, std::get<1>(payment)};
 
-      payments.push_back(pmt);
-    }
-    else
-      return std::nullopt;
-  }
+      //payments.push_back(pmt);
+    //}
+    //else
+      //return std::nullopt;
+  //}
 
-  return payments;
+  //return payments;
+  return std::nullopt;
 }
 
 std::vector<cryptonote::reward_payout> BlockchainSQLite::calculate_rewards(const cryptonote::block& block, std::vector<cryptonote::reward_payout> contributors)

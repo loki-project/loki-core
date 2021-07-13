@@ -47,7 +47,10 @@ class BlockchainSQLite
 public:
   BlockchainSQLite();
 
+  void create_schema();
   void load_database(std::optional<fs::path> file);
+
+  std::optional<uint64_t> retrieve_amount_by_address(const std::string& address);
 
   //add/subtract_sn_payments -> passing an array of addressesd and amount. These will be added or subtracted to the database for each address specified. If the address does not exist it will be created.
   bool add_sn_payments(cryptonote::network_type nettype, std::vector<cryptonote::reward_payout>& payments, uint64_t height);
