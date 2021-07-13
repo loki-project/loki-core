@@ -1,0 +1,10 @@
+#include "version.h"
+
+using namespace std::literals;
+
+const std::array<uint16_t, 3> OXEN_VERSION = {9, 2, 0};
+
+const std::string_view OXEN_VERSION_TAG = "@VERSIONTAG@"sv;
+const std::string_view OXEN_VERSION_STR = "9.2.0"sv;
+const std::string_view OXEN_RELEASE_NAME = "Audacious Aurochs"sv;
+const std::string_view OXEN_VERSION_FULL = "9.2.0-@VERSIONTAG@-dev"sv;
