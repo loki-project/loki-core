@@ -2454,7 +2454,8 @@ namespace service_nodes
     // - Check that the winner in the block is actually the winner
     // - Check that the height in the block matches the height in coinbase if exists and it is in order
     // - Check that the Service node winner is actually an address
-    // - 
+    // - Check that the amount of contributors is correct in the block when calling add_block(contributors)
+    // - Hard code a limit to the block amount?
     if (block.major_version >= cryptonote::network_version_19)
       return true;
 

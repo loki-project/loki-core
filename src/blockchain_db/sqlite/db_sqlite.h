@@ -50,6 +50,7 @@ public:
   void create_schema();
   void load_database(std::optional<fs::path> file);
 
+  uint64_t batching_count();
   std::optional<uint64_t> retrieve_amount_by_address(const std::string& address);
 
   //add/subtract_sn_payments -> passing an array of addressesd and amount. These will be added or subtracted to the database for each address specified. If the address does not exist it will be created.
@@ -70,7 +71,7 @@ public:
 
   uint64_t height;
 
-  std::unique_ptr<SQLite::Database> m_storage;
+  std::unique_ptr<SQLite::Database> db;
   std::string filename;
 
 private:

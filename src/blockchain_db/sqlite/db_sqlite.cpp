@@ -28,7 +28,6 @@
 #include "db_sqlite.h"
 
 #include <SQLiteCpp/SQLiteCpp.h>
-#include <SQLiteCpp/VariadicBind.h>
 #include <sqlite3.h>
 
 #include <string>
@@ -45,11 +44,90 @@
 namespace cryptonote
 {
 
+template <typename T> constexpr bool is_cstr = false;
+template <size_t N> constexpr bool is_cstr<char[N]> = true;
+template <size_t N> constexpr bool is_cstr<const char[N]> = true;
+template <> constexpr bool is_cstr<char*> = true;
+template <> constexpr bool is_cstr<const char*> = true;
+
+// Simple wrapper class that can be used to bind a blob through the templated binding code below.
+// E.g. `exec_query(st, 100, 42, blob_binder{data})` binds the third parameter using no-copy blob
+// binding of the contained data.
+struct blob_binder {
+    std::string_view data;
+    explicit blob_binder(std::string_view d) : data{d} {}
+};
+
+// Binds a string_view as a no-copy blob at parameter index i.
+void bind_blob_ref(SQLite::Statement& st, int i, std::string_view blob) {
+    st.bindNoCopy(i, static_cast<const void*>(blob.data()), blob.size());
+}
+
+// Called from exec_query and similar to bind statement parameters for immediate execution.  strings
+// (and c strings) use no-copy binding; user_pubkey_t values use *two* sequential binding slots for
+// pubkey (first) and type (second); integer values are bound by value.  You can bind a blob (by
+// reference, like strings) by passing `blob_binder{data}`.
+template <typename T>
+void bind_oneshot(SQLite::Statement& st, int& i, const T& val) {
+    if constexpr (std::is_same_v<T, std::string> || is_cstr<T>)
+        st.bindNoCopy(i++, val);
+    else if constexpr (std::is_same_v<T, blob_binder>)
+        bind_blob_ref(st, i++, val.data);
+    else
+        st.bind(i++, val);
+}
+
+// Executes a query that does not expect results.  Optionally binds parameters, if provided.
+// Returns the number of affected rows; throws on error or if results are returned.
+template <typename... T>
+int exec_query(SQLite::Statement& st, const T&... bind) {
+    int i = 1;
+    (bind_oneshot(st, i, bind), ...);
+    return st.exec();
+}
+
+// Same as above, but prepares a literal query on the fly for use with queries that are only used
+// once.
+template <typename... T>
+int exec_query(SQLite::Database& db, const char* query, const T&... bind) {
+    SQLite::Statement st{db, query};
+    return exec_query(st, bind...);
+}
+
+constexpr std::chrono::milliseconds SQLite_busy_timeout = 3s;
+
 BlockchainSQLite::BlockchainSQLite():height(0){};
+
+
+void BlockchainSQLite::create_schema() {
+
+	SQLite::Transaction transaction{*db};
+
+//TODO sean this could be unsigned bigint for amount and height?
+	db->exec(R"(
+CREATE TABLE batch_sn_payments (
+    address BLOB NOT NULL PRIMARY KEY,
+    amount BIGINT NOT NULL,
+    height BIGINT NOT NULL,
+    UNIQUE(address)
+    CHECK(amount >= 0)
+);
+
+CREATE TRIGGER batch_payments_delete_empty
+AFTER UPDATE ON batch_sn_payments FOR EACH ROW WHEN NEW.amount = 0 
+BEGIN
+  DELETE FROM batch_sn_payments WHERE address = NEW.address;
+END;
+	)");
+
+	transaction.commit();
+
+	MINFO("Database setup complete");
+} 
 
 void BlockchainSQLite::load_database(std::optional<fs::path> file)
 {
-  if (m_storage)
+  if (db)
     throw std::runtime_error("Reloading database not supported");  // TODO
 
   std::string fileString;
@@ -63,44 +141,34 @@ void BlockchainSQLite::load_database(std::optional<fs::path> file)
     fileString = ":memory:";
     MINFO("Loading memory-backed sqliteDB");
   }
+  db = std::make_unique<SQLite::Database>(
+      SQLite::Database{
+      fileString, 
+      SQLite::OPEN_READWRITE | SQLite::OPEN_CREATE | SQLite::OPEN_FULLMUTEX,
+      SQLite_busy_timeout.count()
+      });
 
-  m_storage = std::make_unique<SQLite::Database>(SQLite::Database{fileString});
-
-  if (!m_storage->tableExists("batch_sn_payments")) {
+  if (!db->tableExists("batch_sn_payments")) {
     create_schema();
   }
-
 }
 
-void BlockchainSQLite::create_schema() {
-
-	SQLite::Transaction transaction{*m_storage};
-
-	m_storage->exec(R"(
-CREATE TABLE batch_sn_payments (
-    address BLOB NOT NULL PRIMARY KEY,
-    amount INTEGER NOT NULL,
-    height INTEGER NOT NULL,
-    UNIQUE(address)
-    CHECK(amount >= 0)
-);
-
-CREATE TRIGGER batch_payments_delete_empty
-AFTER UPDATE ON batch_sn_payments FOR EACH ROW WHEN NEW.amount = 0 THEN DELETE FROM batch_sn_payments WHERE address = NEW.address;
-	)");
-
-	transaction.commit();
-
-	MINFO("Database setup complete");
-} 
+uint64_t BlockchainSQLite::batching_count() {
+  SQLite::Statement st{*db, "SELECT count(*) FROM batch_sn_payments"};
+  uint64_t count = 0;
+  while (st.executeStep()) {
+    count = st.getColumn(0).getInt();
+  }
+  return count;
+}
 
 std::optional<uint64_t> BlockchainSQLite::retrieve_amount_by_address(const std::string& address) {
-  SQLite::Statement st{*m_storage, "SELECT amount FROM batch_sn_payments WHERE address = ?"};
+  SQLite::Statement st{*db, "SELECT amount FROM batch_sn_payments WHERE address = ?"};
   st.bind(1, address);
-  std::optional<uint64_t> amount;
+  std::optional<uint64_t> amount = std::nullopt;
   while (st.executeStep()) {
     assert(!amount);
-    amount = st.getColumn(0).getInt();
+    amount.emplace(st.getColumn(0).getInt64());
   }
   return amount;
 }
@@ -108,84 +176,102 @@ std::optional<uint64_t> BlockchainSQLite::retrieve_amount_by_address(const std::
 // tuple (Address, amount, height)
 bool BlockchainSQLite::add_sn_payments(cryptonote::network_type nettype, std::vector<cryptonote::reward_payout>& payments, uint64_t height)
 {
-	SQLite::Transaction transaction{*m_storage};
 
-  SQLite::Statement insert_payment{*m_storage,
+  //Assert that all the payments are unique
+  std::sort(payments.begin(),payments.end(),[](auto i, auto j){ return tools::view_guts(i.address) < tools::view_guts(j.address); });
+  auto uniq = std::unique( payments.begin(), payments.end(), [](auto i, auto j){ return tools::view_guts(i.address) == tools::view_guts(j.address); } );
+  if(uniq != payments.end()) {
+    MWARNING("Duplicate addresses in payments list");
+    return false;
+  }
+
+	SQLite::Transaction transaction{*db};
+
+  SQLite::Statement insert_payment{*db,
     "INSERT INTO batch_sn_payments (address, amount, height) VALUES (?, ?, ?)"};
 
-  SQLite::Statement update_payment{*m_storage,
+  SQLite::Statement update_payment{*db,
     "UPDATE batch_sn_payments SET amount = ? WHERE address = ?"};
 
   for (auto& payment: payments) {
     std::string address_str = cryptonote::get_account_address_as_str(nettype, 0, payment.address);
     auto prev_amount = retrieve_amount_by_address(address_str);
     if(prev_amount.has_value()){
-      MINFO("Record found for SN reward contributor, adding to database");
-      update_payment.bind(*prev_amount + payment.amount, address_str);
+      MDEBUG("Record found for SN reward contributor, adding " << address_str << "to database with amount " << int64_t{payment.amount});
+      exec_query(update_payment, int64_t{*prev_amount} + int64_t{payment.amount}, address_str);
+      update_payment.reset();
     } else {
-      MINFO("No record found for SN reward contributor, adding to database");
-      insert_payment.bind(address_str, payment.amount, height);
+      MDEBUG("No Record found for SN reward contributor, adding " << address_str << "to database with amount " << int64_t{payment.amount});
+      exec_query(insert_payment, address_str, int64_t{payment.amount}, int64_t{height});
+      insert_payment.reset();
     }
   };
+
+  transaction.commit();
+
   return true;
 }
 
 // tuple (Address, amount)
 bool BlockchainSQLite::subtract_sn_payments(cryptonote::network_type nettype, std::vector<cryptonote::reward_payout>& payments, uint64_t height)
 {
-  //for (auto& payment: payments) {
-    //std::string address_str = cryptonote::get_account_address_as_str(nettype, 0, payment.address);
-    //auto prev_entry = m_storage->get<cryptonote::batch_sn_payments>(address_str);
-    //if (payment.amount > prev_entry.amount)
-      //return false;
-    //m_storage->update_all(
-        //set(
-          //c(&cryptonote::batch_sn_payments::amount) = (prev_entry.amount - payment.amount),
-          //c(&cryptonote::batch_sn_payments::height) = height),
-        //where(c(&cryptonote::batch_sn_payments::address) = prev_entry.address));
+	SQLite::Transaction transaction{*db};
 
-    //// TODO: sean removing sqlite orm. amount == 0 isnt working, so workaround with amount <= 0 and amount >= 0
-    //m_storage->remove_all<cryptonote::batch_sn_payments>(where(c(&cryptonote::batch_sn_payments::amount) <= 0 and c(&cryptonote::batch_sn_payments::amount) >= 0));
-  //};
-return true;
+  SQLite::Statement update_payment{*db,
+    "UPDATE batch_sn_payments SET amount = ? WHERE address = ?"};
+
+  for (auto& payment: payments) {
+    std::string address_str = cryptonote::get_account_address_as_str(nettype, 0, payment.address);
+    auto prev_amount = retrieve_amount_by_address(address_str);
+    if(prev_amount.has_value()){
+      if (payment.amount > *prev_amount)
+        return false;
+      //update_payment.bind(*prev_amount - payment.amount, address_str);
+      exec_query(update_payment, int64_t{*prev_amount - payment.amount}, address_str);
+      update_payment.reset();
+
+    } else {
+      return false;
+    }
+  };
+
+  transaction.commit();
+
+  return true;
 }
 
 std::optional<std::vector<cryptonote::reward_payout>> BlockchainSQLite::get_sn_payments(cryptonote::network_type nettype, uint64_t height)
 {
 
-//const auto& conf = get_config(nettype);
+  const auto& conf = get_config(nettype);
 
-////SELECT
-  ////address,
-  ////amount
-//auto result = m_storage->select(
-    //columns(
-      //&cryptonote::batch_sn_payments::address,
-      //&cryptonote::batch_sn_payments::amount)
-    //,
-    //where(c(&cryptonote::batch_sn_payments::height) <= height - conf.BATCHING_INTERVAL and
-          //c(&cryptonote::batch_sn_payments::amount) > conf.MIN_BATCH_PAYMENT_AMOUNT),
-    //order_by(&cryptonote::batch_sn_payments::height),
-    //limit(conf.LIMIT_BATCH_OUTPUTS));
+  SQLite::Statement select_payments{*db,
+    "SELECT address, amount FROM batch_sn_payments WHERE height <= ? AND amount > ? ORDER BY height LIMIT ?"};
 
-  //std::vector<cryptonote::reward_payout> payments;
+  select_payments.bind(1, int64_t{height - conf.BATCHING_INTERVAL});
+  select_payments.bind(2, int64_t{conf.MIN_BATCH_PAYMENT_AMOUNT});
+  select_payments.bind(3, int64_t{conf.LIMIT_BATCH_OUTPUTS});
 
-  //for(auto &payment : result) {
-    ////TODO sean remove
-    ////std::cout << std::get<0>(payment) << '\t' << std::get<1>(payment) << std::endl;
-    //cryptonote::address_parse_info info;
-    //if (cryptonote::get_account_address_from_str(info, nettype, std::get<0>(payment)))
-    //{
-      //cryptonote::reward_payout pmt = {cryptonote::reward_type::snode, info.address, std::get<1>(payment)};
+  std::vector<cryptonote::reward_payout> payments;
 
-      //payments.push_back(pmt);
-    //}
-    //else
-      //return std::nullopt;
-  //}
+  std::string address;
+  uint64_t amount;
+  while (select_payments.executeStep())
+  {
+    cryptonote::address_parse_info info;
+    address = select_payments.getColumn(0).getString();
+    amount = uint64_t{select_payments.getColumn(1).getInt64()};
+    if (cryptonote::get_account_address_from_str(info, nettype, address))
+    {
+      cryptonote::reward_payout pmt = {cryptonote::reward_type::snode, info.address, amount};
 
-  //return payments;
-  return std::nullopt;
+      payments.push_back(pmt);
+    }
+    else
+      return std::nullopt;
+  }
+
+  return payments;
 }
 
 std::vector<cryptonote::reward_payout> BlockchainSQLite::calculate_rewards(const cryptonote::block& block, std::vector<cryptonote::reward_payout> contributors)
