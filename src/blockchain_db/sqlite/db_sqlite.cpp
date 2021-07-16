@@ -103,7 +103,6 @@ void BlockchainSQLite::create_schema() {
 
 	SQLite::Transaction transaction{*db};
 
-//TODO sean this could be unsigned bigint for amount and height?
 	db->exec(R"(
 CREATE TABLE batch_sn_payments (
     address BLOB NOT NULL PRIMARY KEY,
@@ -128,7 +127,7 @@ END;
 void BlockchainSQLite::load_database(std::optional<fs::path> file)
 {
   if (db)
-    throw std::runtime_error("Reloading database not supported");  // TODO
+    throw std::runtime_error("Reloading database not supported");
 
   std::string fileString;
   if (file.has_value())
@@ -174,16 +173,17 @@ std::optional<uint64_t> BlockchainSQLite::retrieve_amount_by_address(const std::
 }
 
 // tuple (Address, amount, height)
-bool BlockchainSQLite::add_sn_payments(cryptonote::network_type nettype, std::vector<cryptonote::reward_payout>& payments, uint64_t height)
+bool BlockchainSQLite::add_sn_payments(cryptonote::network_type nettype, std::vector<cryptonote::batch_sn_payment>& payments, uint64_t height)
 {
 
   //Assert that all the payments are unique
-  std::sort(payments.begin(),payments.end(),[](auto i, auto j){ return tools::view_guts(i.address) < tools::view_guts(j.address); });
-  auto uniq = std::unique( payments.begin(), payments.end(), [](auto i, auto j){ return tools::view_guts(i.address) == tools::view_guts(j.address); } );
-  if(uniq != payments.end()) {
-    MWARNING("Duplicate addresses in payments list");
-    return false;
-  }
+  // TODO sean: unsure if this is necessary. The rewards probably don't ever need to support multiple additions to the same address. Thought it would mess with the database but it looks like its supported
+  //std::sort(payments.begin(),payments.end(),[](auto i, auto j){ return tools::view_guts(i.address) < tools::view_guts(j.address); });
+  //auto uniq = std::unique( payments.begin(), payments.end(), [](auto i, auto j){ return tools::view_guts(i.address) == tools::view_guts(j.address); } );
+  //if(uniq != payments.end()) {
+    //MWARNING("Duplicate addresses in payments list");
+    //return false;
+  //}
 
 	SQLite::Transaction transaction{*db};
 
@@ -194,7 +194,7 @@ bool BlockchainSQLite::add_sn_payments(cryptonote::network_type nettype, std::ve
     "UPDATE batch_sn_payments SET amount = ? WHERE address = ?"};
 
   for (auto& payment: payments) {
-    std::string address_str = cryptonote::get_account_address_as_str(nettype, 0, payment.address);
+    std::string address_str = cryptonote::get_account_address_as_str(nettype, 0, payment.address_info.address);
     auto prev_amount = retrieve_amount_by_address(address_str);
     if(prev_amount.has_value()){
       MDEBUG("Record found for SN reward contributor, adding " << address_str << "to database with amount " << int64_t{payment.amount});
@@ -207,13 +207,14 @@ bool BlockchainSQLite::add_sn_payments(cryptonote::network_type nettype, std::ve
     }
   };
 
+  //TODO sean: revert on failure?
   transaction.commit();
 
   return true;
 }
 
 // tuple (Address, amount)
-bool BlockchainSQLite::subtract_sn_payments(cryptonote::network_type nettype, std::vector<cryptonote::reward_payout>& payments, uint64_t height)
+bool BlockchainSQLite::subtract_sn_payments(cryptonote::network_type nettype, std::vector<cryptonote::batch_sn_payment>& payments, uint64_t height)
 {
 	SQLite::Transaction transaction{*db};
 
@@ -221,7 +222,7 @@ bool BlockchainSQLite::subtract_sn_payments(cryptonote::network_type nettype, st
     "UPDATE batch_sn_payments SET amount = ? WHERE address = ?"};
 
   for (auto& payment: payments) {
-    std::string address_str = cryptonote::get_account_address_as_str(nettype, 0, payment.address);
+    std::string address_str = cryptonote::get_account_address_as_str(nettype, 0, payment.address_info.address);
     auto prev_amount = retrieve_amount_by_address(address_str);
     if(prev_amount.has_value()){
       if (payment.amount > *prev_amount)
@@ -240,7 +241,7 @@ bool BlockchainSQLite::subtract_sn_payments(cryptonote::network_type nettype, st
   return true;
 }
 
-std::optional<std::vector<cryptonote::reward_payout>> BlockchainSQLite::get_sn_payments(cryptonote::network_type nettype, uint64_t height)
+std::optional<std::vector<cryptonote::batch_sn_payment>> BlockchainSQLite::get_sn_payments(cryptonote::network_type nettype, uint64_t height)
 {
 
   const auto& conf = get_config(nettype);
@@ -252,7 +253,7 @@ std::optional<std::vector<cryptonote::reward_payout>> BlockchainSQLite::get_sn_p
   select_payments.bind(2, int64_t{conf.MIN_BATCH_PAYMENT_AMOUNT});
   select_payments.bind(3, int64_t{conf.LIMIT_BATCH_OUTPUTS});
 
-  std::vector<cryptonote::reward_payout> payments;
+  std::vector<cryptonote::batch_sn_payment> payments;
 
   std::string address;
   uint64_t amount;
@@ -261,10 +262,12 @@ std::optional<std::vector<cryptonote::reward_payout>> BlockchainSQLite::get_sn_p
     cryptonote::address_parse_info info;
     address = select_payments.getColumn(0).getString();
     amount = uint64_t{select_payments.getColumn(1).getInt64()};
+    //TODO sean make this from constructor
     if (cryptonote::get_account_address_from_str(info, nettype, address))
     {
-      cryptonote::reward_payout pmt = {cryptonote::reward_type::snode, info.address, amount};
+      cryptonote::batch_sn_payment pmt(info, amount, nettype);
 
+      //TODO sean emplace back
       payments.push_back(pmt);
     }
     else
@@ -274,11 +277,11 @@ std::optional<std::vector<cryptonote::reward_payout>> BlockchainSQLite::get_sn_p
   return payments;
 }
 
-std::vector<cryptonote::reward_payout> BlockchainSQLite::calculate_rewards(const cryptonote::block& block, std::vector<cryptonote::reward_payout> contributors)
+std::vector<cryptonote::batch_sn_payment> BlockchainSQLite::calculate_rewards(cryptonote::network_type nettype, const cryptonote::block& block, std::vector<cryptonote::batch_sn_payment> contributors)
 {
   uint64_t distribution_amount = block.reward;
   uint64_t total_contributed_to_winner_sn = 0;
-  std::vector<cryptonote::reward_payout> payments;
+  std::vector<cryptonote::batch_sn_payment> payments;
   for (auto & contributor : contributors)
   {
     total_contributed_to_winner_sn += contributor.amount;
@@ -286,13 +289,13 @@ std::vector<cryptonote::reward_payout> BlockchainSQLite::calculate_rewards(const
   
   for (auto & contributor : contributors)
   {
-    cryptonote::reward_payout something(cryptonote::reward_type::snode, contributor.address, (contributor.amount / total_contributed_to_winner_sn * distribution_amount));
-    payments.emplace_back(cryptonote::reward_type::snode, contributor.address, (contributor.amount / total_contributed_to_winner_sn * distribution_amount));
+    //cryptonote::batch_sn_payment something(contributor.address, (contributor.amount / total_contributed_to_winner_sn * distribution_amount));
+    payments.emplace_back(contributor.address, (contributor.amount / total_contributed_to_winner_sn * distribution_amount), nettype);
   }
   return payments;
 }
 
-bool BlockchainSQLite::add_block(cryptonote::network_type nettype, const cryptonote::block &block, std::vector<cryptonote::reward_payout> contributors)
+bool BlockchainSQLite::add_block(cryptonote::network_type nettype, const cryptonote::block &block, std::vector<cryptonote::batch_sn_payment> contributors)
 {
 
   MINFO(__FILE__ << ":" << __LINE__ << " TODO sean remove this - blcok height: " << cryptonote::get_block_height(block));
@@ -336,7 +339,7 @@ bool BlockchainSQLite::add_block(cryptonote::network_type nettype, const crypton
   }
 
 
-  std::vector<cryptonote::reward_payout> payments = calculate_rewards(block, contributors);
+  std::vector<cryptonote::batch_sn_payment> payments = calculate_rewards(nettype, block, contributors);
 
   MINFO(__FILE__ << ":" << __LINE__ << " TODO sean remove this - height: " << height);
   height++;
@@ -345,7 +348,7 @@ bool BlockchainSQLite::add_block(cryptonote::network_type nettype, const crypton
 }
 
 
-bool BlockchainSQLite::pop_block(cryptonote::network_type nettype, const cryptonote::block &block, std::vector<cryptonote::reward_payout> contributors)
+bool BlockchainSQLite::pop_block(cryptonote::network_type nettype, const cryptonote::block &block, std::vector<cryptonote::batch_sn_payment> contributors)
 {
   assert(cryptonote::get_block_height(block) == height);
   //assert(cryptonote::is_valid_address(block.service_node_winner, nettype));
@@ -382,18 +385,18 @@ bool BlockchainSQLite::pop_block(cryptonote::network_type nettype, const crypton
       return false;
   }
 
-  std::vector<cryptonote::reward_payout> payments = calculate_rewards(block, contributors);
+  std::vector<cryptonote::batch_sn_payment> payments = calculate_rewards(nettype, block, contributors);
 
   height--;
   return subtract_sn_payments(nettype, payments, block.height);
 }
 
-bool BlockchainSQLite::validate_batch_sn_reward_tx(uint8_t hf_version, uint64_t blockchain_height, cryptonote::transaction const &tx, std::string *reason)
+bool BlockchainSQLite::validate_batch_sn_payment_tx(uint8_t hf_version, uint64_t blockchain_height, cryptonote::transaction const &tx, std::string *reason)
 {
   return true;
 }
 
-bool BlockchainSQLite::validate_batch_payment(std::vector<std::tuple<crypto::public_key, uint64_t>> batch_payment, std::vector<cryptonote::reward_payout> calculated_payment, uint64_t height)
+bool BlockchainSQLite::validate_batch_payment(std::vector<std::tuple<crypto::public_key, uint64_t>> batch_payment, std::vector<cryptonote::batch_sn_payment> calculated_payment, uint64_t height)
 {
   keypair const txkey{hw::get_device("default")};
   size_t length_batch_payment = batch_payment.size();
@@ -416,7 +419,7 @@ bool BlockchainSQLite::validate_batch_payment(std::vector<std::tuple<crypto::pub
     //TODO sean, this loses information because we delete out the reward vout so batch_payment might no longer align with the block outputs
     keypair const deterministic_keypair = get_deterministic_keypair_from_height(height);
     crypto::public_key out_eph_public_key{};
-    if (!get_deterministic_output_key(calculated_payment[i].address, deterministic_keypair, i, out_eph_public_key))
+    if (!get_deterministic_output_key(calculated_payment[i].address_info.address, deterministic_keypair, i, out_eph_public_key))
     {
       MERROR("Failed to generate output one-time public key");
       return false;

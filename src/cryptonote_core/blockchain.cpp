@@ -729,11 +729,11 @@ block Blockchain::pop_block_from_blockchain()
   {
     //TODO sean this needs to be updated to get the service node winner for block not coinbase tx
     // Also service_node_list has a function that can do this: payout service_node_info_to_payout(crypto::public_key const &key, service_node_info const &info)
-    std::vector<cryptonote::reward_payout> contributors{0};
+    std::vector<cryptonote::batch_sn_payment> contributors;
     auto service_node_array = m_service_node_list.get_service_node_list_state({popped_block.service_node_winner_key});
     for (auto & contributor : service_node_array[0].info->contributors)
     {
-      contributors.emplace_back(cryptonote::reward_type::snode, contributor.address, contributor.amount);
+      contributors.emplace_back(contributor.address, contributor.amount, m_nettype);
     }
     if (m_sqlite_db->pop_block(m_nettype, popped_block, contributors))
     {
@@ -1616,7 +1616,7 @@ bool Blockchain::create_block_template_internal(block& b, const crypto::hash *fr
     return false;
   }
 
-  std::optional<std::vector<cryptonote::reward_payout>> sn_rwds = std::nullopt;
+  std::optional<std::vector<cryptonote::batch_sn_payment>> sn_rwds = std::nullopt;
   if (hf_version >= cryptonote::network_version_19)
   {
     sn_rwds = m_sqlite_db->get_sn_payments(m_nettype, height); //Rewards to pay out
@@ -4494,12 +4494,12 @@ bool Blockchain::handle_block_to_main_chain(const block& bl, const crypto::hash&
   {
     //TODO sean this needs to be updated to get the service node winner for block not coinbase tx
     // Also service_node_list has a function that can do this: payout service_node_info_to_payout(crypto::public_key const &key, service_node_info const &info)
-    std::vector<cryptonote::reward_payout> contributors{0};
+    std::vector<cryptonote::batch_sn_payment> contributors;
     //auto service_node_array = m_service_node_list.get_service_node_list_state({cryptonote::get_service_node_winner_from_tx_extra(bl.miner_tx.extra)});
     auto service_node_array = m_service_node_list.get_service_node_list_state({bl.service_node_winner_key});
     for (auto & contributor : service_node_array[0].info->contributors)
     {
-      contributors.emplace_back(cryptonote::reward_type::snode, contributor.address, contributor.amount);
+      contributors.emplace_back(contributor.address, contributor.amount, m_nettype);
     }
     MINFO(__FILE__ << ":" << __LINE__ << " TODO sean remove this - ABCDEF - Adding SN rewards number contributors: " << contributors.size());
     if (!m_sqlite_db->add_block(m_nettype, bl, contributors))

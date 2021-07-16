@@ -141,7 +141,7 @@ TEST(parse_and_validate_tx_extra, is_valid_tx_extra_parsed)
   cryptonote::account_base acc;
   acc.generate();
   cryptonote::blobdata b = "dsdsdfsdfsf";
-  std::optional<std::vector<cryptonote::reward_payout>> sn_rwds;
+  std::optional<std::vector<cryptonote::batch_sn_payment>> sn_rwds;
   uint64_t block_rewards = 0;
   bool r;
   std::tie(r, block_rewards) = cryptonote::construct_miner_tx(0, 0, 10000000000000, 1000, TEST_FEE, tx, cryptonote::oxen_miner_tx_context::miner_block(cryptonote::FAKECHAIN, acc.get_keys().m_account_address), sn_rwds, b);
@@ -154,7 +154,7 @@ TEST(parse_and_validate_tx_extra, fails_on_big_extra_nonce)
   cryptonote::transaction tx{};
   cryptonote::account_base acc;
   acc.generate();
-  std::optional<std::vector<cryptonote::reward_payout>> sn_rwds;
+  std::optional<std::vector<cryptonote::batch_sn_payment>> sn_rwds;
   cryptonote::blobdata b(cryptonote::TX_EXTRA_NONCE_MAX_COUNT + 1, 0);
   uint64_t block_rewards = 0;
   bool r;

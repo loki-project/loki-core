@@ -40,15 +40,15 @@ TEST(SQLITE, AddSNRewards)
 
   EXPECT_TRUE(sqliteDB.batching_count() == 0);
 
-  std::vector<cryptonote::reward_payout> t1;
+  std::vector<cryptonote::batch_sn_payment> t1;
 
   cryptonote::address_parse_info wallet_address;
 
   cryptonote::get_account_address_from_str(wallet_address, cryptonote::network_type::TESTNET, "T6TzkJb5EiASaCkcH7idBEi1HSrpSQJE1Zq3aL65ojBMPZvqHNYPTL56i3dncGVNEYCG5QG5zrBmRiVwcg6b1cRM1SRNqbp44");
 
-  t1.emplace_back(cryptonote::reward_type::snode, wallet_address.address, 16500000000);
-  //t1.emplace_back(cryptonote::reward_type::snode, wallet_address.address, 16500000000);
-  //t1.emplace_back(cryptonote::reward_type::snode, wallet_address.address, 16500000000/2);
+  t1.emplace_back(wallet_address.address, 16500000000, cryptonote::network_type::TESTNET);
+  t1.emplace_back(wallet_address.address, 16500000000, cryptonote::network_type::TESTNET);
+  t1.emplace_back(wallet_address.address, 16500000000/2, cryptonote::network_type::TESTNET);
 
   bool success = sqliteDB.add_sn_payments(cryptonote::network_type::TESTNET, t1, 1); 
   EXPECT_TRUE(success);
@@ -65,20 +65,25 @@ TEST(SQLITE, AddSNRewards)
 
   EXPECT_TRUE(sqliteDB.batching_count() == 1);
 
-  std::optional<std::vector<cryptonote::reward_payout>> p1;
+  std::optional<std::vector<cryptonote::batch_sn_payment>> p1;
   p1 = sqliteDB.get_sn_payments(cryptonote::network_type::TESTNET, 6);
   EXPECT_TRUE(p1.has_value());
   EXPECT_TRUE((*p1).size() == 0);
 
-  std::optional<std::vector<cryptonote::reward_payout>> p2;
+  std::optional<std::vector<cryptonote::batch_sn_payment>> p2;
   p2 = sqliteDB.get_sn_payments(cryptonote::network_type::TESTNET, 7);
   EXPECT_TRUE(p2.has_value());
   EXPECT_TRUE((*p2).size() == 1);
-  MINFO("Amount: " << (*p2)[0].amount);
-  //EXPECT_TRUE((*p2)[0].amount == (16500000000 * 2 + 16500000000/2) * 6);
-  EXPECT_TRUE((*p2)[0].amount == (16500000000) * 6);
+  uint64_t expected_amount = (16500000000 * 2 + 16500000000/2) * 6;
+  EXPECT_TRUE((*p2)[0].amount == expected_amount);
+  //EXPECT_TRUE((*p2)[0].amount == (16500000000) * 6);
 
-  // TODO sean subtract some stuff now and make sure its right
-  // Also add in an invalid one
+  // Subtract the amount back out and expect the database to be empty
+  std::vector<cryptonote::batch_sn_payment> t2;
+  t2.emplace_back(wallet_address.address, expected_amount, cryptonote::network_type::TESTNET);
+
+  success = sqliteDB.subtract_sn_payments(cryptonote::network_type::TESTNET, t2, 7); 
+  EXPECT_TRUE(success);
+  EXPECT_TRUE(sqliteDB.batching_count() == 0);
 }
 

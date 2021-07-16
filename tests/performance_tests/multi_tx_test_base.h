@@ -51,7 +51,7 @@ public:
     using namespace cryptonote;
 
     std::vector<tx_source_entry::output_entry> output_entries;
-    std::optional<std::vector<cryptonote::reward_payout>> sn_rwds;
+    std::optional<std::vector<cryptonote::batch_sn_payment>> sn_rwds;
     for (size_t i = 0; i < ring_size; ++i)
     {
       m_miners[i].generate();

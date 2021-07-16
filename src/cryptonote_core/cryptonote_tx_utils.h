@@ -30,6 +30,7 @@
 
 #pragma once
 #include "cryptonote_basic/cryptonote_format_utils.h"
+#include "blockchain_db/sqlite/types.h"
 #include <boost/serialization/vector.hpp>
 #include <boost/serialization/utility.hpp>
 #include "ringct/rctOps.h"
@@ -129,7 +130,7 @@ namespace cryptonote
       uint64_t fee,
       transaction& tx,
       const oxen_miner_tx_context &miner_context,
-      const std::optional<std::vector<cryptonote::reward_payout>> sn_rwds,
+      const std::optional<std::vector<cryptonote::batch_sn_payment>> sn_rwds,
       const blobdata& extra_nonce = blobdata(),
       uint8_t hard_fork_version = 1);
 

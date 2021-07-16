@@ -3567,13 +3567,13 @@ bool oxen_batch_sn_rewards_pop_blocks::generate(std::vector<test_event_entry> &e
     auto sqliteDB = blockchain.sqlite_db();
     CHECK_EQ((*sqliteDB).height, blockchain.get_current_blockchain_height() - 1);
 
-    std::optional<std::vector<cryptonote::reward_payout>> records;
+    std::optional<std::vector<cryptonote::batch_sn_payment>> records;
     records = (*sqliteDB).get_sn_payments(cryptonote::network_type::TESTNET, 7);
     CHECK_EQ(records.has_value(), true);
     CHECK_EQ((*records).size(), 1);
     const uint64_t batched_rewards_earned = MK_COINS(1) * 16.5 * (conf.BATCHING_INTERVAL - 2);
     CHECK_EQ((*records)[0].amount, batched_rewards_earned);
-    CHECK_EQ(tools::view_guts((*records)[0].address), tools::view_guts(alice.get_keys().m_account_address));
+    CHECK_EQ(tools::view_guts((*records)[0].address_info.address), tools::view_guts(alice.get_keys().m_account_address));
 
     return true;
   });
@@ -3620,7 +3620,7 @@ bool oxen_batch_sn_rewards_pop_blocks::generate(std::vector<test_event_entry> &e
     auto sqliteDB = blockchain.sqlite_db();
     CHECK_EQ((*sqliteDB).height, blockchain.get_current_blockchain_height() - 1);
 
-    std::optional<std::vector<cryptonote::reward_payout>> records;
+    std::optional<std::vector<cryptonote::batch_sn_payment>> records;
     records = (*sqliteDB).get_sn_payments(cryptonote::network_type::TESTNET, 7);
     CHECK_EQ((*records).size(), 0);
 

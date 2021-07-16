@@ -58,7 +58,7 @@ bool test_transaction_generation_and_ring_signature()
   account_base rv_acc2;
   rv_acc2.generate();
   transaction tx_mine_1;
-  std::optional<std::vector<cryptonote::reward_payout>> sn_rwds;
+  std::optional<std::vector<cryptonote::batch_sn_payment>> sn_rwds;
   construct_miner_tx(0, 0, 0, 10, 0, tx_mine_1, cryptonote::oxen_miner_tx_context::miner_block(cryptonote::FAKECHAIN, miner_acc1.get_keys().m_account_address),sn_rwds);
   transaction tx_mine_2;
   construct_miner_tx(0, 0, 0, 0, 0, tx_mine_2, cryptonote::oxen_miner_tx_context::miner_block(cryptonote::FAKECHAIN, miner_acc2.get_keys().m_account_address),sn_rwds);
@@ -140,7 +140,7 @@ bool test_block_creation()
   bool r = get_account_address_from_str(info, MAINNET, "0099be99c70ef10fd534c43c88e9d13d1c8853213df7e362afbec0e4ee6fec4948d0c190b58f4b356cd7feaf8d9d0a76e7c7e5a9a0a497a6b1faf7a765882dd08ac2");
   CHECK_AND_ASSERT_MES(r, false, "failed to import");
   block b;
-  std::optional<std::vector<cryptonote::reward_payout>> sn_rwds;
+  std::optional<std::vector<cryptonote::batch_sn_payment>> sn_rwds;
   uint64_t block_rewards = 0;
   std::tie(r, block_rewards) = construct_miner_tx(90, epee::misc_utils::median(szs), 3553616528562147, 33094, 10000000, b.miner_tx, cryptonote::oxen_miner_tx_context::miner_block(cryptonote::FAKECHAIN, info.address), sn_rwds, blobdata());
   return r;

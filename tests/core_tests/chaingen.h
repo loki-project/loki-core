@@ -60,6 +60,7 @@
 #include "epee/misc_language.h"
 
 #include "blockchain_db/testdb.h"
+#include "blockchain_db/sqlite/types.h"
 
 #undef LOKI_DEFAULT_LOG_CATEGORY
 #define LOKI_DEFAULT_LOG_CATEGORY "tests.core"
@@ -1135,7 +1136,7 @@ inline bool do_replay_file(const std::string& filename)
 
 #define MAKE_MINER_TX_MANUALLY(TX, BLK)                                                                                \
   transaction TX;                                                                                                      \
-  std::optional<std::vector<cryptonote::reward_payout>> sn_rwds;                                                       \
+  std::optional<std::vector<cryptonote::batch_sn_payment>> sn_rwds;                                                       \
   uint64_t block_rewards = 0;                                                                                          \
   bool r;                                                                                                              \
   std::tie(r, block_rewards) = construct_miner_tx(get_block_height(BLK) + 1,                                           \

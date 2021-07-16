@@ -31,6 +31,7 @@ add_library(blockchain_db
   blockchain_db.cpp
   lmdb/db_lmdb.cpp
   sqlite/db_sqlite.cpp
+  sqlite/types.cpp
   )
 
 target_link_libraries(blockchain_db
