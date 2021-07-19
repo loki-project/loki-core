@@ -172,6 +172,9 @@ class SNNetwork:
         vprint("Local Devnet SN network setup complete!")
         vprint("Communicate with daemon on ip: {} port: {}".format(self.sns[0].listen_ip,self.sns[0].rpc_port))
 
+        # TODO sean remove: Mine 1 more to cause crash
+        self.sync_nodes(self.mine(1))
+
 
 
 

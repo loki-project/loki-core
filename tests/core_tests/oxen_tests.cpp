@@ -3559,9 +3559,9 @@ bool oxen_batch_sn_rewards_pop_blocks::generate(std::vector<test_event_entry> &e
   oxen_register_callback(events, "trigger_blockchain_detach", [=](cryptonote::core &c, size_t ev_index)
   {
     DEFINE_TESTS_ERROR_CONTEXT("trigger_blockchain_detach");
-    cryptonote::Blockchain &blockchain = c.get_blockchain_storage();
+    cryptonote::Blockchain& blockchain = c.get_blockchain_storage();
 
-    uint64_t curr_height   = blockchain.get_current_blockchain_height();
+    uint64_t curr_height = blockchain.get_current_blockchain_height();
     // NOTE: Reorg to remove one block
     blockchain.pop_blocks(1);
     auto sqliteDB = blockchain.sqlite_db();

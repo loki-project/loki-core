@@ -84,7 +84,7 @@ class RPCDaemon:
         return self.args
 
 
-    def json_rpc(self, method, params=None, *, timeout=10):
+    def json_rpc(self, method, params=None, *, timeout=100):
         """Sends a json_rpc request to the rpc port.  Returns the response object."""
         if not self.proc:
             raise RuntimeError("Cannot make rpc request before calling start()")

@@ -725,21 +725,22 @@ block Blockchain::pop_block_from_blockchain()
     LOG_ERROR("Error popping block from blockchain, throwing!");
     throw;
   }
-  if ( popped_block.major_version >= cryptonote::network_version_19 && m_nettype != FAKECHAIN )
+  std::vector<cryptonote::batch_sn_payment> contributors;
+  if (popped_block.major_version >= cryptonote::network_version_19)
   {
     //TODO sean this needs to be updated to get the service node winner for block not coinbase tx
     // Also service_node_list has a function that can do this: payout service_node_info_to_payout(crypto::public_key const &key, service_node_info const &info)
-    std::vector<cryptonote::batch_sn_payment> contributors;
     auto service_node_array = m_service_node_list.get_service_node_list_state({popped_block.service_node_winner_key});
     for (auto & contributor : service_node_array[0].info->contributors)
     {
       contributors.emplace_back(contributor.address, contributor.amount, m_nettype);
     }
-    if (m_sqlite_db->pop_block(m_nettype, popped_block, contributors))
-    {
-      LOG_ERROR("Failed to pop to batch rewards DB. throwing");
-      throw;
-    }
+
+  }
+  if (!m_sqlite_db->pop_block(m_nettype, popped_block, contributors))
+  {
+    LOG_ERROR("Failed to pop to batch rewards DB. throwing");
+    throw;
   }
 
   m_ons_db.block_detach(*this, m_db->height());
@@ -4490,25 +4491,24 @@ bool Blockchain::handle_block_to_main_chain(const block& bl, const crypto::hash&
     return false;
   } 
 
-  if ( bl.major_version >= cryptonote::network_version_19 && m_nettype != FAKECHAIN )
+  std::vector<cryptonote::batch_sn_payment> contributors;
+  if (bl.major_version >= cryptonote::network_version_19)
   {
     //TODO sean this needs to be updated to get the service node winner for block not coinbase tx
     // Also service_node_list has a function that can do this: payout service_node_info_to_payout(crypto::public_key const &key, service_node_info const &info)
-    std::vector<cryptonote::batch_sn_payment> contributors;
     //auto service_node_array = m_service_node_list.get_service_node_list_state({cryptonote::get_service_node_winner_from_tx_extra(bl.miner_tx.extra)});
     auto service_node_array = m_service_node_list.get_service_node_list_state({bl.service_node_winner_key});
     for (auto & contributor : service_node_array[0].info->contributors)
     {
       contributors.emplace_back(contributor.address, contributor.amount, m_nettype);
     }
-    MINFO(__FILE__ << ":" << __LINE__ << " TODO sean remove this - ABCDEF - Adding SN rewards number contributors: " << contributors.size());
-    if (!m_sqlite_db->add_block(m_nettype, bl, contributors))
-    {
-      MINFO("Failed to add block to batch rewards DB.");
-      MGINFO_RED("Failed to add block to batch rewards DB.");
-      bvc.m_verifivation_failed = true;
-      return false;
-    }
+  }
+  if (!m_sqlite_db->add_block(m_nettype, bl, contributors))
+  {
+    MINFO("Failed to add block to batch rewards DB.");
+    MGINFO_RED("Failed to add block to batch rewards DB.");
+    bvc.m_verifivation_failed = true;
+    return false;
   }
 
   for (BlockAddedHook* hook : m_block_added_hooks)

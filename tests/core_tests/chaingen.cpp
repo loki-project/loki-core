@@ -242,19 +242,19 @@ oxen_blockchain_entry &oxen_chain_generator::add_block(oxen_blockchain_entry con
     ons_db_->add_block(entry.block, entry.txs);
   }
 
+  std::vector<cryptonote::batch_sn_payment> contributors;
   if ( entry.block.major_version >= cryptonote::network_version_19)
   {
     auto service_node_array = service_node_contributors_.find(entry.block.service_node_winner_key);
     if (service_node_array != service_node_contributors_.end())
     {
-      std::vector<cryptonote::batch_sn_payment> contributors{0};
       for (auto & contributor : (*service_node_array).second)
       {
         contributors.emplace_back(contributor.first, contributor.second, cryptonote::FAKECHAIN);
       }
-      sqlite_db_->add_block(cryptonote::FAKECHAIN, entry.block, contributors);
     }
   }
+  sqlite_db_->add_block(cryptonote::FAKECHAIN, entry.block, contributors);
 
   // TODO(oxen): State history culling and alt states
   state_history_.emplace_hint(state_history_.end(), result.service_node_state);
