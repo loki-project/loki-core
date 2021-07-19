@@ -1284,6 +1284,7 @@ namespace service_nodes
 
     if (miner_block)
     {
+
       if (cryptonote::block_has_pulse_components(block))
       {
         if (log_errors) MGINFO("Pulse " << block_type << "received but only miner blocks are permitted\n" << dump_pulse_block_data(block, pulse_quorum.get()));
@@ -2398,6 +2399,8 @@ namespace service_nodes
       miner,
       pulse_block_leader_is_producer,
       pulse_different_block_producer,
+      batched_no_outputs,
+      batched_bulk_outputs,
     };
 
     verify_mode mode                      = verify_mode::miner;
@@ -2444,6 +2447,21 @@ namespace service_nodes
 
     std::shared_ptr<const service_node_info> block_producer = nullptr;
     size_t expected_vouts_size                        = 0;
+
+    //TODO sean - 
+    // - Check that a batch should be paid out, compare with the output of get_sn_payments
+    // - Check that the new amount in the block is right
+    // - Check that the winner in the block is actually the winner
+    // - Check that the height in the block matches the height in coinbase if exists and it is in order
+    // - Check that the Service node winner is actually an address
+    // - Check that the amount of contributors is correct in the block when calling add_block(contributors)
+    // - Hard code a limit to the block amount?
+    if (block.major_version >= cryptonote::network_version_19)
+      return true;
+
+    //mode = verify_mode::batched_no_outputs;
+    //MGINFO("Batched miner reward");
+    // make a verify_mode for this.
     if (mode == verify_mode::pulse_block_leader_is_producer || mode == verify_mode::pulse_different_block_producer)
     {
       auto info_it = m_state.service_nodes_infos.find(block_producer_key);
@@ -2455,17 +2473,23 @@ namespace service_nodes
 
       block_producer = info_it->second;
       if (mode == verify_mode::pulse_different_block_producer && reward_parts.miner_fee > 0)
+      {
         expected_vouts_size += block_producer->contributors.size();
+      }
     }
     else
     {
       if ((reward_parts.base_miner + reward_parts.miner_fee) > 0) // (HF >= 16) this can be zero, no miner coinbase.
+      {
         expected_vouts_size += 1; /*miner*/
+      }
     }
 
-    expected_vouts_size += block_leader.payouts.size();
+    if (mode != verify_mode::batched_no_outputs)
+    {
+      expected_vouts_size += block_leader.payouts.size();
+    }
     expected_vouts_size += static_cast<size_t>(cryptonote::height_has_governance_output(m_blockchain.nettype(), hf_version, height));
-
     if (miner_tx.vout.size() != expected_vouts_size)
     {
       char const *type = mode == verify_mode::miner
@@ -2562,6 +2586,18 @@ namespace service_nodes
             vout_index++;
           }
         }
+      }
+      break;
+
+      case verify_mode::batched_no_outputs:
+      {
+        //TODO sean do some checks here
+      }
+      break;
+
+      case verify_mode::batched_bulk_outputs:
+      {
+        //TODO sean do some checks here
       }
       break;
     }
@@ -3013,7 +3049,7 @@ namespace service_nodes
       REJECT_PROOF("timestamp is too far from now");
 
     for (auto const &min : MIN_UPTIME_PROOF_VERSIONS) {
-      if (vers >= min.hardfork_revision) {
+      if (vers >= min.hardfork_revision && m_blockchain.nettype() != cryptonote::DEVNET) {
         if (proof->version < min.oxend)
           REJECT_PROOF("v" << tools::join(".", min.oxend) << "+ oxend version is required for v" << +vers.first << "." << +vers.second << "+ network proofs");
         if (proof->lokinet_version < min.lokinet)

@@ -2822,15 +2822,17 @@ void wallet2::process_parsed_blocks(uint64_t start_height, const std::vector<cry
   };
 
   txidx = 0;
-  for (size_t i = 0; i < blocks.size(); ++i)
+  for (size_t i = 0; i < parsed_blocks.size(); ++i)
   {
+    cryptonote::block blk = parsed_blocks[i].block;
+
     if (should_skip_block(parsed_blocks[i].block, start_height + i))
     {
       txidx += 1 + parsed_blocks[i].block.tx_hashes.size();
       continue;
     }
 
-    if (m_refresh_type != RefreshType::RefreshNoCoinbase)
+    if (m_refresh_type != RefreshType::RefreshNoCoinbase && parsed_blocks[i].block.miner_tx.vout.size() > 0)
     {
       THROW_WALLET_EXCEPTION_IF(txidx >= tx_cache_data.size(), error::wallet_internal_error, "txidx out of range");
       const size_t n_vouts = m_refresh_type == RefreshType::RefreshOptimizeCoinbase ? 1 : parsed_blocks[i].block.miner_tx.vout.size();
@@ -2841,7 +2843,7 @@ void wallet2::process_parsed_blocks(uint64_t start_height, const std::vector<cry
     {
       THROW_WALLET_EXCEPTION_IF(txidx >= tx_cache_data.size(), error::wallet_internal_error, "txidx out of range");
       tpool.submit(&waiter, [&, i, j, txidx](){ geniod(parsed_blocks[i].txes[j], parsed_blocks[i].txes[j].vout.size(), txidx); }, true);
-      ++txidx;
+    ++txidx;
     }
   }
   THROW_WALLET_EXCEPTION_IF(txidx != tx_cache_data.size(), error::wallet_internal_error, "txidx did not reach expected value");

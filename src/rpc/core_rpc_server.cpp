@@ -1832,14 +1832,21 @@ namespace cryptonote { namespace rpc {
     response.cumulative_difficulty = m_core.get_blockchain_storage().get_db().get_block_cumulative_difficulty(height);
     response.block_weight = m_core.get_blockchain_storage().get_db().get_block_weight(height);
     response.reward = get_block_reward(blk);
-    response.miner_reward = blk.miner_tx.vout[0].amount;
     response.block_size = response.block_weight = m_core.get_blockchain_storage().get_db().get_block_weight(height);
     response.num_txes = blk.tx_hashes.size();
     if (fill_pow_hash)
       response.pow_hash = tools::type_to_hex(get_block_longhash_w_blockchain(m_core.get_nettype(), &(m_core.get_blockchain_storage()), blk, height, 0));
     response.long_term_weight = m_core.get_blockchain_storage().get_db().get_block_long_term_weight(height);
-    response.miner_tx_hash = tools::type_to_hex(cryptonote::get_transaction_hash(blk.miner_tx));
-    response.service_node_winner = tools::type_to_hex(cryptonote::get_service_node_winner_from_tx_extra(blk.miner_tx.extra));
+    if (blk.miner_tx.vout.size() > 0)
+    {
+      response.miner_reward = blk.miner_tx.vout[0].amount;
+      response.miner_tx_hash = tools::type_to_hex(cryptonote::get_transaction_hash(blk.miner_tx));
+      response.service_node_winner = tools::type_to_hex(cryptonote::get_service_node_winner_from_tx_extra(blk.miner_tx.extra));
+    } else {
+      response.miner_reward = blk.reward;
+      //TODO sean this is an address i guess?
+      //response.service_node_winner = blk.service_node_winner_key;
+    }
     if (get_tx_hashes)
     {
       response.tx_hashes.reserve(blk.tx_hashes.size());
@@ -2073,6 +2080,7 @@ namespace cryptonote { namespace rpc {
       block_hash = get_block_hash(blk);
       block_height = req.height;
     }
+
     fill_block_header_response(blk, orphan, block_height, block_hash, res.block_header, req.fill_pow_hash && context.admin, false /*tx hashes*/);
     res.tx_hashes.reserve(blk.tx_hashes.size());
     for (const auto& tx_hash : blk.tx_hashes)

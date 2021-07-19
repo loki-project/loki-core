@@ -111,9 +111,12 @@ bool gen_uint_overflow_1::generate(std::vector<test_event_entry>& events) const
   // Problem 1. Miner tx outputs overflow
   {
     oxen_blockchain_entry entry       = gen.create_next_block();
-    cryptonote::transaction &miner_tx = entry.block.miner_tx;
-    split_miner_tx_outs(miner_tx, MONEY_SUPPLY);
-    gen.add_block(entry, false /*can_be_added_to_blockchain*/, "We purposely overflow miner tx by MONEY_SUPPLY in the miner tx");
+    if ( entry.block.major_version < cryptonote::network_version_19)
+    {
+      cryptonote::transaction &miner_tx = entry.block.miner_tx;
+      split_miner_tx_outs(miner_tx, MONEY_SUPPLY);
+      gen.add_block(entry, false /*can_be_added_to_blockchain*/, "We purposely overflow miner tx by MONEY_SUPPLY in the miner tx");
+    }
   }
 
   // Problem 2. block_reward overflow
@@ -124,9 +127,12 @@ bool gen_uint_overflow_1::generate(std::vector<test_event_entry>& events) const
       txs.push_back(gen.create_and_add_tx(gen.first_miner_, alice.get_keys().m_account_address, MK_COINS(1), MK_COINS(100) /*fee*/, false /*kept_by_block*/));
 
       oxen_blockchain_entry entry       = gen.create_next_block(txs);
-      cryptonote::transaction &miner_tx = entry.block.miner_tx;
-      miner_tx.vout[0].amount           = 0; // Take partial block reward, fee > block_reward so ordinarly it would overflow. This should be disallowed
-      gen.add_block(entry, false /*can_be_added_to_blockchain*/, "We should not be able to add TX because the fee is greater than the base miner reward");
+      if ( entry.block.major_version < cryptonote::network_version_19)
+      {
+        cryptonote::transaction &miner_tx = entry.block.miner_tx;
+        miner_tx.vout[0].amount           = 0; // Take partial block reward, fee > block_reward so ordinarly it would overflow. This should be disallowed
+        gen.add_block(entry, false /*can_be_added_to_blockchain*/, "We should not be able to add TX because the fee is greater than the base miner reward");
+      }
     }
 
     {
@@ -135,9 +141,12 @@ bool gen_uint_overflow_1::generate(std::vector<test_event_entry>& events) const
       txs.push_back(gen.create_and_add_tx(gen.first_miner_, alice.get_keys().m_account_address, MK_COINS(1), MK_COINS(100) /*fee*/, true /*kept_by_block*/));
 
       oxen_blockchain_entry entry       = gen.create_next_block(txs);
-      cryptonote::transaction &miner_tx = entry.block.miner_tx;
-      miner_tx.vout[0].amount           = 0; // Take partial block reward, fee > block_reward so ordinarly it would overflow. This should be disallowed
-      gen.add_block(entry, false /*can_be_added_to_blockchain*/, "We should not be able to add TX because the fee is greater than the base miner reward even if kept_by_block is true");
+      if ( entry.block.major_version < cryptonote::network_version_19)
+      {
+        cryptonote::transaction &miner_tx = entry.block.miner_tx;
+        miner_tx.vout[0].amount           = 0; // Take partial block reward, fee > block_reward so ordinarly it would overflow. This should be disallowed
+        gen.add_block(entry, false /*can_be_added_to_blockchain*/, "We should not be able to add TX because the fee is greater than the base miner reward even if kept_by_block is true");
+      }
     }
   }
   return true;

@@ -62,6 +62,7 @@
 #include "crypto/hash.h"
 #include "checkpoints/checkpoints.h"
 #include "blockchain_db/blockchain_db.h"
+#include "blockchain_db/sqlite/db_sqlite.h"
 #include "cryptonote_core/oxen_name_system.h"
 #include "pulse.h"
 
@@ -148,7 +149,7 @@ namespace cryptonote
      *
      * @return true on success, false if any initialization steps fail
      */
-    bool init(BlockchainDB* db, sqlite3 *ons_db, const network_type nettype = MAINNET, bool offline = false, const cryptonote::test_options *test_options = nullptr, difficulty_type fixed_difficulty = 0, const GetCheckpointsCallback& get_checkpoints = nullptr);
+    bool init(BlockchainDB* db, sqlite3 *ons_db, std::shared_ptr<cryptonote::BlockchainSQLite> sqlite_db, const network_type nettype = MAINNET, bool offline = false, const cryptonote::test_options *test_options = nullptr, difficulty_type fixed_difficulty = 0, const GetCheckpointsCallback& get_checkpoints = nullptr);
 
     /**
      * @brief Uninitializes the blockchain state
@@ -1008,6 +1009,8 @@ namespace cryptonote
 
     const ons::name_system_db &name_system_db() const { return m_ons_db; }
 
+    std::shared_ptr<cryptonote::BlockchainSQLite> sqlite_db() { return m_sqlite_db; }
+
     /**
      * @brief flush the invalid blocks set
      */
@@ -1055,6 +1058,7 @@ namespace cryptonote
     tx_memory_pool&                   m_tx_pool;
     service_nodes::service_node_list& m_service_node_list;
     ons::name_system_db               m_ons_db;
+    std::shared_ptr<cryptonote::BlockchainSQLite> m_sqlite_db;
 
     mutable std::recursive_mutex m_blockchain_lock; // TODO: add here reader/writer lock
 

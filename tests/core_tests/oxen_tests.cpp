@@ -48,7 +48,9 @@ static void add_service_nodes(oxen_chain_generator &gen, size_t count)
 {
   std::vector<cryptonote::transaction> registration_txs(count);
   for (auto i = 0u; i < count; ++i)
+  {
     registration_txs[i] = gen.create_and_add_registration_tx(gen.first_miner());
+  }
   gen.create_and_add_next_block(registration_txs);
 }
 
@@ -82,6 +84,7 @@ bool oxen_checkpointing_alt_chain_handle_alt_blocks_at_tip::generate(std::vector
   gen.add_blocks_until_next_checkpointable_height();
   fork.add_blocks_until_next_checkpointable_height();
   fork.add_service_node_checkpoint(fork.height(), service_nodes::CHECKPOINT_MIN_VOTES);
+
 
   // NOTE: Though we receive a checkpoint via votes, the alt block is still in
   // the alt db because we don't trigger a chain switch until we receive a 2nd
@@ -478,7 +481,7 @@ bool oxen_core_block_reward_unpenalized_pre_pulse::generate(std::vector<test_eve
 
 bool oxen_core_block_reward_unpenalized_post_pulse::generate(std::vector<test_event_entry>& events)
 {
-  auto hard_forks = oxen_generate_hard_fork_table(cryptonote::network_version_count -1, 150 /*Proof Of Stake Delay*/);
+  auto hard_forks = oxen_generate_hard_fork_table(cryptonote::network_version_19 -1, 150 /*Proof Of Stake Delay*/);
   oxen_chain_generator gen(events, hard_forks);
 
   uint8_t const newest_hf = hard_forks.back().version;
@@ -527,7 +530,7 @@ bool oxen_core_block_reward_unpenalized_post_pulse::generate(std::vector<test_ev
 
 bool oxen_core_fee_burning::generate(std::vector<test_event_entry>& events)
 {
-  auto hard_forks = oxen_generate_hard_fork_table();
+  auto hard_forks = oxen_generate_hard_fork_table(cryptonote::network_version_19-1);
   oxen_chain_generator gen(events, hard_forks);
   gen.add_blocks_until_version(hard_forks.back().version);
 
@@ -3323,5 +3326,306 @@ bool oxen_pulse_chain_split_with_no_checkpoints::generate(std::vector<test_event
     CHECK_EQ(fork_top_hash, top_hash);
     return true;
   });
+  return true;
+}
+
+bool oxen_batch_sn_rewards::generate(std::vector<test_event_entry> &events)
+{
+  constexpr auto& conf = cryptonote::get_config(cryptonote::FAKECHAIN);
+  auto hard_forks = oxen_generate_hard_fork_table();
+  oxen_chain_generator gen(events, hard_forks);
+  const auto miner                      = gen.first_miner();
+  const auto alice                      = gen.add_account();
+  size_t alice_account_base_event_index = gen.event_index();
+  auto min_service_nodes = service_nodes::pulse_min_service_nodes(cryptonote::FAKECHAIN);
+
+  gen.add_blocks_until_version(hard_forks.back().version);
+  gen.add_n_blocks(10);
+  gen.add_mined_money_unlock_blocks();
+
+  for (auto i = 0u; i < min_service_nodes; ++i) {
+    const auto tx0 = gen.create_and_add_tx(miner, alice.get_keys().m_account_address, MK_COINS(101));
+    gen.create_and_add_next_block({tx0});
+  }
+  gen.add_transfer_unlock_blocks();
+
+  std::vector<cryptonote::transaction> registration_txs(service_nodes::pulse_min_service_nodes(cryptonote::FAKECHAIN));
+  for (auto i = 0u; i < min_service_nodes; ++i) {
+    registration_txs[i] = gen.create_and_add_registration_tx(alice);
+    gen.process_registration_tx(registration_txs[i], 12+i, hard_forks.back().version);
+  }
+
+
+  // NOTE: Generate Valid Blocks
+  gen.create_and_add_next_block({registration_txs});
+    
+  oxen_register_callback(events, "check_registered", [&events, alice, min_service_nodes](cryptonote::core &c, size_t ev_index)
+  { DEFINE_TESTS_ERROR_CONTEXT("gen_service_nodes::check_registered"); std::vector<cryptonote::block> blocks;
+    bool r = c.get_blocks((uint64_t)0, (uint64_t)-1, blocks);
+    CHECK_TEST_CONDITION(r);
+    std::vector<cryptonote::block> chain;
+    map_hash2tx_t mtx;
+    r = find_block_chain(events, chain, mtx, cryptonote::get_block_hash(blocks.back()));
+    CHECK_TEST_CONDITION(r);
+
+    const uint64_t unlocked_balance    = get_unlocked_balance(alice, blocks, mtx);
+    const uint64_t staking_requirement = MK_COINS(100);
+
+    //TODO sean -- WHY IS IT 201! this makes no sense
+    CHECK_EQ((MK_COINS(201) - TESTS_DEFAULT_FEE - staking_requirement)*min_service_nodes, unlocked_balance);
+
+    /// check that alice is registered
+    const auto info_v = c.get_service_node_list_state({});
+    CHECK_EQ(info_v.size(), min_service_nodes);
+    return true;
+  });
+
+  for (auto i = 0u; i < conf.BATCHING_INTERVAL; ++i)
+    gen.create_and_add_next_block();
+
+  oxen_register_callback(events, "check_no_rewards_before_batch", [&events, alice, min_service_nodes](cryptonote::core &c, size_t ev_index)
+  {
+    DEFINE_TESTS_ERROR_CONTEXT("check_no_rewards_before_batch");
+    const auto stake_lock_time = service_nodes::staking_num_lock_blocks(cryptonote::FAKECHAIN);
+
+    std::vector<cryptonote::block> blocks;
+    bool r = c.get_blocks((uint64_t)0, (uint64_t)-1, blocks);
+    CHECK_TEST_CONDITION(r);
+    std::vector<cryptonote::block> chain;
+    map_hash2tx_t mtx;
+    r = find_block_chain(events, chain, mtx, cryptonote::get_block_hash(blocks.back()));
+    CHECK_TEST_CONDITION(r);
+
+    // Expect no change in balance after blocks < batched constant
+    // 201 (balance) - 100 (stake) - 0.2 (test fee) = 0.8 oxen
+    const uint64_t balance    = get_balance(alice, blocks, mtx);
+    const uint64_t staking_requirement = MK_COINS(100);
+
+    CHECK_EQ((MK_COINS(201) - TESTS_DEFAULT_FEE - staking_requirement)*min_service_nodes, balance);
+    return true;
+  });
+
+  gen.create_and_add_next_block();
+  oxen_register_callback(events, "check_rewards_received_after_batch", [&events, alice, min_service_nodes](cryptonote::core &c, size_t ev_index)
+  {
+    DEFINE_TESTS_ERROR_CONTEXT("check_rewards_received_after_batch");
+    const auto stake_lock_time = service_nodes::staking_num_lock_blocks(cryptonote::FAKECHAIN);
+
+    std::vector<cryptonote::block> blocks;
+    bool r = c.get_blocks((uint64_t)0, (uint64_t)-1, blocks);
+    CHECK_TEST_CONDITION(r);
+    std::vector<cryptonote::block> chain;
+    map_hash2tx_t mtx;
+    r = find_block_chain(events, chain, mtx, cryptonote::get_block_hash(blocks.back()));
+    CHECK_TEST_CONDITION(r);
+
+    // Expect increase in balance after blocks < batched constant
+    // 201 (balance) - 100 (stake) - 0.2 (test fee) + 16.5*6 (Batched reward)= 1.8 oxen
+    const uint64_t balance    = get_balance(alice, blocks, mtx);
+    const uint64_t staking_requirement = MK_COINS(100);
+    const uint64_t batched_rewards_earned = MK_COINS(1) * 16.5 * conf.BATCHING_INTERVAL;
+
+    CHECK_EQ((MK_COINS(201) - TESTS_DEFAULT_FEE - staking_requirement)*min_service_nodes + batched_rewards_earned, balance);
+    return true;
+  });
+  return true;
+}
+
+bool oxen_batch_sn_rewards_bad_amount::generate(std::vector<test_event_entry> &events)
+{
+  constexpr auto& conf = cryptonote::get_config(cryptonote::FAKECHAIN);
+  auto hard_forks = oxen_generate_hard_fork_table();
+  oxen_chain_generator gen(events, hard_forks);
+  const auto miner                      = gen.first_miner();
+  const auto alice                      = gen.add_account();
+  size_t alice_account_base_event_index = gen.event_index();
+  auto min_service_nodes = service_nodes::pulse_min_service_nodes(cryptonote::FAKECHAIN);
+
+  gen.add_blocks_until_version(hard_forks.back().version);
+  gen.add_n_blocks(10);
+  gen.add_mined_money_unlock_blocks();
+
+  for (auto i = 0u; i < min_service_nodes; ++i) {
+    const auto tx0 = gen.create_and_add_tx(miner, alice.get_keys().m_account_address, MK_COINS(101));
+    gen.create_and_add_next_block({tx0});
+  }
+  gen.add_transfer_unlock_blocks();
+
+  std::vector<cryptonote::transaction> registration_txs(service_nodes::pulse_min_service_nodes(cryptonote::FAKECHAIN));
+  for (auto i = 0u; i < min_service_nodes; ++i) {
+    registration_txs[i] = gen.create_and_add_registration_tx(alice);
+    gen.process_registration_tx(registration_txs[i], 12+i, hard_forks.back().version);
+  }
+
+
+  // NOTE: Generate Valid Blocks
+  gen.create_and_add_next_block({registration_txs});
+
+  for (auto i = 0u; i < conf.BATCHING_INTERVAL; ++i)
+    gen.create_and_add_next_block();
+
+  //THIS BLOCK WILL CONTAIN THE BATCH TRANSACTION
+  oxen_blockchain_entry entry   = gen.create_next_block();
+  //Modify batch reward tx amount
+  entry.block.miner_tx.vout[0].amount = entry.block.miner_tx.vout[0].amount + 1;
+  oxen_blockchain_entry &result = gen.add_block(entry, false, "Block with modified amount in batched reward succeeded when it should have failed");
+  
+  return true;
+}
+
+bool oxen_batch_sn_rewards_bad_address::generate(std::vector<test_event_entry> &events)
+{
+  cryptonote::keypair const txkey{hw::get_device("default")};
+  constexpr auto& conf = cryptonote::get_config(cryptonote::FAKECHAIN);
+  auto hard_forks = oxen_generate_hard_fork_table();
+  oxen_chain_generator gen(events, hard_forks);
+  const auto miner                      = gen.first_miner();
+  const auto alice                      = gen.add_account();
+  size_t alice_account_base_event_index = gen.event_index();
+  auto min_service_nodes = service_nodes::pulse_min_service_nodes(cryptonote::FAKECHAIN);
+
+  gen.add_blocks_until_version(hard_forks.back().version);
+  gen.add_n_blocks(10);
+  gen.add_mined_money_unlock_blocks();
+
+  for (auto i = 0u; i < min_service_nodes; ++i) {
+    const auto tx0 = gen.create_and_add_tx(miner, alice.get_keys().m_account_address, MK_COINS(101));
+    gen.create_and_add_next_block({tx0});
+  }
+  gen.add_transfer_unlock_blocks();
+
+  std::vector<cryptonote::transaction> registration_txs(service_nodes::pulse_min_service_nodes(cryptonote::FAKECHAIN));
+  for (auto i = 0u; i < min_service_nodes; ++i) {
+    registration_txs[i] = gen.create_and_add_registration_tx(alice);
+    gen.process_registration_tx(registration_txs[i], 12+i, hard_forks.back().version);
+  }
+
+  // NOTE: Generate Valid Blocks
+  gen.create_and_add_next_block({registration_txs});
+
+  for (auto i = 0u; i < conf.BATCHING_INTERVAL; ++i)
+    gen.create_and_add_next_block();
+
+  //THIS BLOCK WILL CONTAIN THE BATCH TRANSACTION
+  oxen_blockchain_entry entry   = gen.create_next_block();
+  //Modify batch reward address
+  const auto bob                = gen.add_account();
+  auto bob_address = bob.get_keys().m_account_address;
+  crypto::public_key bob_deterministic_output_key{};
+  if (!cryptonote::get_deterministic_output_key(bob_address, txkey, 0, bob_deterministic_output_key))
+  {
+    MERROR("Failed to generate output one-time public key");
+    return false;
+  }
+  // Switch Alice as recipient of payment to Bob
+  entry.block.miner_tx.vout[0].target = cryptonote::txout_to_key(bob_deterministic_output_key);
+  oxen_blockchain_entry &result = gen.add_block(entry, false, "Block with modified address in batched reward succeeded when it should have failed");
+  
+  return true;
+}
+
+bool oxen_batch_sn_rewards_pop_blocks::generate(std::vector<test_event_entry> &events)
+{
+  constexpr auto& conf = cryptonote::get_config(cryptonote::FAKECHAIN);
+  auto hard_forks = oxen_generate_hard_fork_table();
+  oxen_chain_generator gen(events, hard_forks);
+  const auto miner                      = gen.first_miner();
+  const auto alice                      = gen.add_account();
+  size_t alice_account_base_event_index = gen.event_index();
+  auto min_service_nodes = service_nodes::pulse_min_service_nodes(cryptonote::FAKECHAIN);
+
+  gen.add_blocks_until_version(hard_forks.back().version);
+  gen.add_n_blocks(10);
+  gen.add_mined_money_unlock_blocks();
+
+  for (auto i = 0u; i < min_service_nodes; ++i) {
+    const auto tx0 = gen.create_and_add_tx(miner, alice.get_keys().m_account_address, MK_COINS(101));
+    gen.create_and_add_next_block({tx0});
+  }
+  gen.add_transfer_unlock_blocks();
+
+  std::vector<cryptonote::transaction> registration_txs(service_nodes::pulse_min_service_nodes(cryptonote::FAKECHAIN));
+  for (auto i = 0u; i < min_service_nodes; ++i) {
+    registration_txs[i] = gen.create_and_add_registration_tx(alice);
+    gen.process_registration_tx(registration_txs[i], 12+i, hard_forks.back().version);
+  }
+
+  // NOTE: Generate Valid Blocks
+  gen.create_and_add_next_block({registration_txs});
+    
+  for (auto i = 0u; i < conf.BATCHING_INTERVAL; ++i)
+    gen.create_and_add_next_block();
+
+  oxen_register_callback(events, "trigger_blockchain_detach", [=](cryptonote::core &c, size_t ev_index)
+  {
+    DEFINE_TESTS_ERROR_CONTEXT("trigger_blockchain_detach");
+    cryptonote::Blockchain& blockchain = c.get_blockchain_storage();
+
+    uint64_t curr_height = blockchain.get_current_blockchain_height();
+    // NOTE: Reorg to remove one block
+    blockchain.pop_blocks(1);
+    auto sqliteDB = blockchain.sqlite_db();
+    CHECK_EQ((*sqliteDB).height, blockchain.get_current_blockchain_height() - 1);
+
+    std::optional<std::vector<cryptonote::batch_sn_payment>> records;
+    records = (*sqliteDB).get_sn_payments(cryptonote::network_type::TESTNET, 7);
+    CHECK_EQ(records.has_value(), true);
+    CHECK_EQ((*records).size(), 1);
+    const uint64_t batched_rewards_earned = MK_COINS(1) * 16.5 * (conf.BATCHING_INTERVAL - 2);
+    CHECK_EQ((*records)[0].amount, batched_rewards_earned);
+    CHECK_EQ(tools::view_guts((*records)[0].address_info.address), tools::view_guts(alice.get_keys().m_account_address));
+
+    return true;
+  });
+
+  oxen_blockchain_entry entry   = gen.create_next_block();
+  //Modify SN rewards winner
+  entry.block.service_node_winner_key = crypto::public_key{0};
+  oxen_blockchain_entry &result = gen.add_block(entry, true, "Block with modified service node winner should have been inserted successfully");
+
+  gen.create_and_add_next_block();
+
+  gen.create_and_add_next_block();
+  oxen_register_callback(events, "check_rewards_received_after_batch", [&events, alice, min_service_nodes](cryptonote::core &c, size_t ev_index)
+  {
+    DEFINE_TESTS_ERROR_CONTEXT("check_rewards_received_after_batch");
+    const auto stake_lock_time = service_nodes::staking_num_lock_blocks(cryptonote::FAKECHAIN);
+
+    std::vector<cryptonote::block> blocks;
+    bool r = c.get_blocks((uint64_t)0, (uint64_t)-1, blocks);
+    CHECK_TEST_CONDITION(r);
+    std::vector<cryptonote::block> chain;
+    map_hash2tx_t mtx;
+    r = find_block_chain(events, chain, mtx, cryptonote::get_block_hash(blocks.back()));
+    CHECK_TEST_CONDITION(r);
+
+    // Expect increase in balance after blocks < batched constant
+    // 201 (balance) - 100 (stake) - 0.2 (test fee) + 16.5*6 (Batched reward)= 1.8 oxen
+    const uint64_t balance    = get_balance(alice, blocks, mtx);
+    const uint64_t staking_requirement = MK_COINS(100);
+    const uint64_t batched_rewards_earned = MK_COINS(1) * 16.5 * (conf.BATCHING_INTERVAL - 2);
+
+    CHECK_EQ((MK_COINS(201) - TESTS_DEFAULT_FEE - staking_requirement)*min_service_nodes + batched_rewards_earned, balance);
+    return true;
+  });
+
+  oxen_register_callback(events, "trigger_blockchain_detach_all_records_gone", [](cryptonote::core &c, size_t ev_index)
+  {
+    DEFINE_TESTS_ERROR_CONTEXT("check_second_ons_entries");
+    cryptonote::Blockchain &blockchain = c.get_blockchain_storage();
+
+    // NOTE: Reorg to just before the 2nd round of ONS entries
+    uint64_t curr_height   = blockchain.get_current_blockchain_height();
+    blockchain.pop_blocks(conf.BATCHING_INTERVAL);
+    auto sqliteDB = blockchain.sqlite_db();
+    CHECK_EQ((*sqliteDB).height, blockchain.get_current_blockchain_height() - 1);
+
+    std::optional<std::vector<cryptonote::batch_sn_payment>> records;
+    records = (*sqliteDB).get_sn_payments(cryptonote::network_type::TESTNET, 7);
+    CHECK_EQ((*records).size(), 0);
+
+    return true;
+  });
+
   return true;
 }

@@ -3619,7 +3619,11 @@ bool BlockchainLMDB::for_all_transactions(std::function<bool(const crypto::hash&
     if (pruned)
     {
       if (!parse_and_validate_tx_base_from_blob(bd, tx))
+      {
+        MINFO(__FILE__ << ":" << __LINE__ << " TODO sean remove this - return from parse_and_validate_tx_base_from_blob");
         throw0(DB_ERROR("Failed to parse tx from blob retrieved from the db"));
+      }
+      MINFO(__FILE__ << ":" << __LINE__ << " TODO sean remove this - return from parse_and_validate_tx_base_from_blob");
     }
     else
     {

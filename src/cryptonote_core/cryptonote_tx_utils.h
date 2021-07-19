@@ -30,10 +30,12 @@
 
 #pragma once
 #include "cryptonote_basic/cryptonote_format_utils.h"
+#include "blockchain_db/sqlite/types.h"
 #include <boost/serialization/vector.hpp>
 #include <boost/serialization/utility.hpp>
 #include "ringct/rctOps.h"
 #include "cryptonote_core/service_node_list.h"
+#include "cryptonote_basic/verification_context.h"
 
 namespace cryptonote
 {
@@ -50,6 +52,22 @@ namespace cryptonote
   std::vector<uint64_t> distribute_reward_by_portions(const std::vector<service_nodes::payout_entry>& payout, uint64_t total_reward, bool distribute_remainder);
   uint64_t get_portion_of_reward                     (uint64_t portions, uint64_t total_service_node_reward);
   uint64_t service_node_reward_formula               (uint64_t base_reward, uint8_t hard_fork_version);
+
+   /**
+    * Returned type of parse_incoming_txs() that provides details about which transactions failed
+    * and why.  This is passed on to handle_parsed_txs() (potentially after modification such as
+    * setting `approved_blink`) to handle_parsed_txs() to actually insert the transactions.
+    */
+   struct tx_verification_batch_info {
+     cryptonote::tx_verification_context tvc{}; // Verification information
+     bool parsed = false; // Will be true if we were able to at least parse the transaction
+     bool result = false; // Indicates that the transaction was parsed and passed some basic checks
+     bool already_have = false; // Indicates that the tx was found to already exist (in mempool or blockchain)
+     bool approved_blink = false; // Can be set between the parse and handle calls to make this a blink tx (that replaces conflicting non-blink txes)
+     const blobdata *blob = nullptr; // Will be set to a pointer to the incoming blobdata (i.e. string). caller must keep it alive!
+     crypto::hash tx_hash; // The transaction hash (only set if `parsed`)
+     transaction tx; // The parsed transaction (only set if `parsed`)
+   };
 
   struct oxen_miner_tx_context
   {
@@ -86,7 +104,25 @@ namespace cryptonote
     uint64_t               batched_governance;   // NOTE: 0 until hardfork v10, then use blockchain::calc_batched_governance_reward
   };
 
-  bool construct_miner_tx(
+  enum struct reward_type
+  {
+    miner,
+    snode,
+    governance
+  };
+
+  struct reward_payout
+  {
+    reward_type            type;
+    account_public_address address;
+    uint64_t               amount;
+    bool operator==(service_nodes::payout_entry const &other) const { return address == other.address; }
+
+    reward_payout() = default;
+    reward_payout(reward_type t, account_public_address addr, uint64_t amt): type{t}, address{std::move(addr)}, amount{amt} {}
+  };
+
+  std::pair<bool, uint64_t> construct_miner_tx(
       size_t height,
       size_t median_weight,
       uint64_t already_generated_coins,
@@ -94,6 +130,7 @@ namespace cryptonote
       uint64_t fee,
       transaction& tx,
       const oxen_miner_tx_context &miner_context,
+      const std::optional<std::vector<cryptonote::batch_sn_payment>> sn_rwds,
       const blobdata& extra_nonce = blobdata(),
       uint8_t hard_fork_version = 1);
 

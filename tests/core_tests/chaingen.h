@@ -60,6 +60,7 @@
 #include "epee/misc_language.h"
 
 #include "blockchain_db/testdb.h"
+#include "blockchain_db/sqlite/types.h"
 
 #undef LOKI_DEFAULT_LOG_CATEGORY
 #define LOKI_DEFAULT_LOG_CATEGORY "tests.core"
@@ -1135,15 +1136,20 @@ inline bool do_replay_file(const std::string& filename)
 
 #define MAKE_MINER_TX_MANUALLY(TX, BLK)                                                                                \
   transaction TX;                                                                                                      \
-  if (!construct_miner_tx(get_block_height(BLK) + 1,                                                                   \
+  std::optional<std::vector<cryptonote::batch_sn_payment>> sn_rwds;                                                       \
+  uint64_t block_rewards = 0;                                                                                          \
+  bool r;                                                                                                              \
+  std::tie(r, block_rewards) = construct_miner_tx(get_block_height(BLK) + 1,                                           \
                           0,                                                                                           \
                           generator.get_already_generated_coins(BLK),                                                  \
                           0,                                                                                           \
                           0,                                                                                           \
                           TX,                                                                                          \
                           cryptonote::oxen_miner_tx_context::miner_block(cryptonote::FAKECHAIN, miner_account.get_keys().m_account_address), \
-                          {},                                                                                          \
-                          7))                                                                                          \
+                          sn_rwds,                                                                                     \
+                          {}                                                                                           \
+                          );                                                                                           \
+  if (!r)                                                                                                              \
     return false;
 
 #define MAKE_TX_LIST_START_RCT(VEC_EVENTS, SET_NAME, FROM, TO, AMOUNT, NMIX, HEAD) \
@@ -1429,9 +1435,12 @@ struct oxen_chain_generator
   // We already store blockchain_entries in block_ vector which stores the actual backing transaction entries.
   std::unordered_map<crypto::hash, cryptonote::transaction>          tx_table_;
   mutable std::unordered_map<crypto::public_key, crypto::secret_key> service_node_keys_;
+  std::unordered_map<crypto::public_key, std::vector<std::pair<cryptonote::account_public_address, uint64_t>>> service_node_contributors_;
   service_nodes::service_node_list::state_set                        state_history_;
   uint64_t                                                           last_cull_height_ = 0;
   std::shared_ptr<ons::name_system_db>                               ons_db_ = std::make_shared<ons::name_system_db>();
+  //TODO sean
+  std::shared_ptr<cryptonote::BlockchainSQLite>                      sqlite_db_ = std::make_shared<cryptonote::BlockchainSQLite>();
   oxen_chain_generator_db                                            db_;
   uint8_t                                                            hf_version_ = cryptonote::network_version_7;
   std::vector<test_event_entry>&                                     events_;
@@ -1506,6 +1515,7 @@ struct oxen_chain_generator
   bool                                                 block_begin(oxen_blockchain_entry &entry, oxen_create_block_params &params, const std::vector<cryptonote::transaction> &tx_list) const;
   void                                                 block_fill_pulse_data(oxen_blockchain_entry &entry, oxen_create_block_params const &params, uint8_t round) const;
   void                                                 block_end(oxen_blockchain_entry &entry, oxen_create_block_params const &params) const;
+  bool                                                 process_registration_tx(cryptonote::transaction& tx, uint64_t block_height, uint8_t hf_version);
 
   uint8_t                                              get_hf_version_at(uint64_t height) const;
   std::vector<uint64_t>                                last_n_block_weights(uint64_t height, uint64_t num) const;

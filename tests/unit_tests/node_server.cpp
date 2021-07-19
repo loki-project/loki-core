@@ -35,6 +35,7 @@
 #include "cryptonote_protocol/cryptonote_protocol_handler.h"
 #include "cryptonote_protocol/cryptonote_protocol_handler.inl"
 #include "cryptonote_core/blockchain.h"
+#include "cryptonote_core/cryptonote_tx_utils.h"
 
 #define MAKE_IPV4_ADDRESS(a,b,c,d) epee::net_utils::ipv4_network_address{MAKE_IP(a,b,c,d),0}
 #define MAKE_IPV4_ADDRESS_PORT(a,b,c,d,e) epee::net_utils::ipv4_network_address{MAKE_IP(a,b,c,d),e}
@@ -56,9 +57,9 @@ public:
   bool get_short_chain_history(std::list<crypto::hash>& ids) const { return true; }
   bool have_block(const crypto::hash& id) const {return true;}
   void get_blockchain_top(uint64_t& height, crypto::hash& top_id)const{height=0;top_id=crypto::null_hash;}
-  std::vector<cryptonote::core::tx_verification_batch_info> parse_incoming_txs(const std::vector<cryptonote::blobdata>& tx_blobs, const cryptonote::tx_pool_options &opts) { return {}; }
-  bool handle_parsed_txs(std::vector<cryptonote::core::tx_verification_batch_info> &parsed_txs, const cryptonote::tx_pool_options &opts, uint64_t *blink_rollback_height = nullptr) { if (blink_rollback_height) *blink_rollback_height = 0; return true; }
-  std::vector<cryptonote::core::tx_verification_batch_info> handle_incoming_txs(const std::vector<cryptonote::blobdata>& tx_blobs, const cryptonote::tx_pool_options &opts) { return {}; }
+  std::vector<cryptonote::tx_verification_batch_info> parse_incoming_txs(const std::vector<cryptonote::blobdata>& tx_blobs, const cryptonote::tx_pool_options &opts) { return {}; }
+  bool handle_parsed_txs(std::vector<cryptonote::tx_verification_batch_info> &parsed_txs, const cryptonote::tx_pool_options &opts, uint64_t *blink_rollback_height = nullptr) { if (blink_rollback_height) *blink_rollback_height = 0; return true; }
+  std::vector<cryptonote::tx_verification_batch_info> handle_incoming_txs(const std::vector<cryptonote::blobdata>& tx_blobs, const cryptonote::tx_pool_options &opts) { return {}; }
   bool handle_incoming_tx(const cryptonote::blobdata& tx_blob, cryptonote::tx_verification_context& tvc, const cryptonote::tx_pool_options &opts) { return true; }
   std::pair<std::vector<std::shared_ptr<cryptonote::blink_tx>>, std::unordered_set<crypto::hash>> parse_incoming_blinks(const std::vector<cryptonote::serializable_blink_metadata> &blinks) { return {}; }
   int add_blinks(const std::vector<std::shared_ptr<cryptonote::blink_tx>> &blinks) { return 0; }

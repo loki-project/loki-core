@@ -215,6 +215,11 @@ namespace boost
     //------------------
     a & b.miner_tx;
     a & b.tx_hashes;
+    if (ver < 19)
+      return;
+    a & b.height;
+    a & b.service_node_winner_key;
+    a & b.reward;
   }
 
   template <class Archive>

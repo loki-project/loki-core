@@ -36,6 +36,7 @@
 #include "cryptonote_basic/verification_context.h"
 #include "cryptonote_core/service_node_voting.h"
 #include "cryptonote_core/cryptonote_core.h"
+#include "cryptonote_core/cryptonote_tx_utils.h"
 #include "cryptonote_core/tx_blink.h"
 #include <unordered_map>
 
@@ -78,9 +79,9 @@ namespace tests
     bool have_block(const crypto::hash& id);
     void get_blockchain_top(uint64_t& height, crypto::hash& top_id);
     bool handle_incoming_tx(const cryptonote::blobdata& tx_blob, cryptonote::tx_verification_context& tvc, const cryptonote::tx_pool_options &opts);
-    std::vector<cryptonote::core::tx_verification_batch_info> parse_incoming_txs(const std::vector<cryptonote::blobdata>& tx_blobs, const cryptonote::tx_pool_options &opts);
-    bool handle_parsed_txs(std::vector<cryptonote::core::tx_verification_batch_info> &parsed_txs, const cryptonote::tx_pool_options &opts, uint64_t *blink_rollback_height = nullptr);
-    std::vector<cryptonote::core::tx_verification_batch_info> handle_incoming_txs(const std::vector<cryptonote::blobdata>& tx_blobs, const cryptonote::tx_pool_options &opts);
+    std::vector<cryptonote::tx_verification_batch_info> parse_incoming_txs(const std::vector<cryptonote::blobdata>& tx_blobs, const cryptonote::tx_pool_options &opts);
+    bool handle_parsed_txs(std::vector<cryptonote::tx_verification_batch_info> &parsed_txs, const cryptonote::tx_pool_options &opts, uint64_t *blink_rollback_height = nullptr);
+    std::vector<cryptonote::tx_verification_batch_info> handle_incoming_txs(const std::vector<cryptonote::blobdata>& tx_blobs, const cryptonote::tx_pool_options &opts);
     std::pair<std::vector<std::shared_ptr<cryptonote::blink_tx>>, std::unordered_set<crypto::hash>> parse_incoming_blinks(const std::vector<cryptonote::serializable_blink_metadata> &blinks);
     int add_blinks(const std::vector<std::shared_ptr<cryptonote::blink_tx>> &blinks) { return 0; }
     bool handle_incoming_block(const cryptonote::blobdata& block_blob, const cryptonote::block *block, cryptonote::block_verification_context& bvc, cryptonote::checkpoint_t *checkpoint, bool update_miner_blocktemplate = true);

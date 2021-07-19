@@ -147,6 +147,10 @@ int main(int argc, char* argv[])
     GENERATE_AND_PLAY(oxen_pulse_fallback_to_pow_and_back);
     GENERATE_AND_PLAY(oxen_pulse_chain_split);
     GENERATE_AND_PLAY(oxen_pulse_chain_split_with_no_checkpoints);
+    GENERATE_AND_PLAY(oxen_batch_sn_rewards);
+    GENERATE_AND_PLAY(oxen_batch_sn_rewards_bad_amount);
+    GENERATE_AND_PLAY(oxen_batch_sn_rewards_bad_address);
+    GENERATE_AND_PLAY(oxen_batch_sn_rewards_pop_blocks);
 
     // NOTE: Monero Tests
     GENERATE_AND_PLAY(gen_simple_chain_001);

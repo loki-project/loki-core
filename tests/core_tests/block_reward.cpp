@@ -42,7 +42,8 @@ namespace
     const account_public_address& miner_address, std::vector<uint64_t>& block_weights, size_t target_tx_weight,
     size_t target_block_weight, uint64_t fee = 0)
   {
-    if (!construct_miner_tx(height, misc_utils::median(block_weights), already_generated_coins, target_block_weight, fee, miner_tx, cryptonote::oxen_miner_tx_context::miner_block(cryptonote::FAKECHAIN, mminer_address)))
+    std::optional<std::vector<cryptonote::batch_sn_payment>> sn_rwds;
+    if (!construct_miner_tx(height, misc_utils::median(block_weights), already_generated_coins, target_block_weight, fee, miner_tx, cryptonote::oxen_miner_tx_context::miner_block(cryptonote::FAKECHAIN, mminer_address), sn_rwds))
       return false;
 
     size_t current_weight = get_transaction_weight(miner_tx);

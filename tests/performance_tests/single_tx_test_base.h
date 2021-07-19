@@ -44,8 +44,13 @@ public:
     m_bob.generate();
 
     oxen_miner_tx_context miner_tx_context = {};
+    std::optional<std::vector<cryptonote::batch_sn_payment>> sn_rwds;
     miner_tx_context.miner_block_producer  = m_bob.get_keys().m_account_address;
-    if (!construct_miner_tx(0, 0, 0, 2, 0, m_tx, cryptonote::oxen_miner_tx_context::miner_block(cryptonote::FAKECHAIN, m_bob.get_keys().m_account_address)))
+
+    uint64_t block_rewards = 0;
+    bool r;
+    std::tie(r, block_rewards) = construct_miner_tx(0, 0, 0, 2, 0, m_tx, cryptonote::oxen_miner_tx_context::miner_block(cryptonote::FAKECHAIN, m_bob.get_keys().m_account_address), sn_rwds);
+    if (!r)
       return false;
 
     m_tx_pub_key = get_tx_pub_key_from_extra(m_tx);

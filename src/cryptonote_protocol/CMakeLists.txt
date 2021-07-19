@@ -42,4 +42,5 @@ target_link_libraries(cryptonote_protocol
   PRIVATE
     miniupnpc
     easylogging
+    SQLiteCpp
     extra)

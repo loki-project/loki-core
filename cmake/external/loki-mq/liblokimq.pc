@@ -1,0 +1,13 @@
+prefix=/usr/local
+exec_prefix=${prefix}
+libdir=/usr/local/lib
+includedir=/usr/local/include
+
+Name: liblokimq
+Description: ZeroMQ-based communication library (compatibility package for liboxenmq)
+Version: 1.2.5
+
+Libs: -L${libdir} -loxenmq
+Libs.private: 
+Requires.private: libzmq libsodium
+Cflags: -I${includedir}

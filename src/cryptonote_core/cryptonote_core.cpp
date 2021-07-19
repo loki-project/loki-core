@@ -66,6 +66,7 @@ extern "C" {
 #include "checkpoints/checkpoints.h"
 #include "ringct/rctTypes.h"
 #include "blockchain_db/blockchain_db.h"
+#include "blockchain_db/sqlite/db_sqlite.h"
 #include "ringct/rctSigs.h"
 #include "common/notify.h"
 #include "version.h"
@@ -823,10 +824,15 @@ namespace cryptonote
     sqlite3 *ons_db = ons::init_oxen_name_system(ons_db_file_path, db->is_read_only());
     if (!ons_db) return false;
 
+    //TODO sean make this work
+    auto sqlite_db_file_path = folder / "sqlite.db";
+    auto sqliteDB = std::make_shared<cryptonote::BlockchainSQLite>();
+    sqliteDB->load_database(sqlite_db_file_path);
+
     init_oxenmq(vm);
 
     const difficulty_type fixed_difficulty = command_line::get_arg(vm, arg_fixed_difficulty);
-    r = m_blockchain_storage.init(db.release(), ons_db, m_nettype, m_offline, regtest ? &regtest_test_options : test_options, fixed_difficulty, get_checkpoints);
+    r = m_blockchain_storage.init(db.release(), ons_db, std::move(sqliteDB), m_nettype, m_offline, regtest ? &regtest_test_options : test_options, fixed_difficulty, get_checkpoints);
     CHECK_AND_ASSERT_MES(r, false, "Failed to initialize blockchain storage");
 
     r = m_mempool.init(max_txpool_weight);
@@ -1297,11 +1303,11 @@ namespace cryptonote
     }
   }
   //-----------------------------------------------------------------------------------------------
-  std::vector<core::tx_verification_batch_info> core::parse_incoming_txs(const std::vector<blobdata>& tx_blobs, const tx_pool_options &opts)
+  std::vector<cryptonote::tx_verification_batch_info> core::parse_incoming_txs(const std::vector<blobdata>& tx_blobs, const tx_pool_options &opts)
   {
     // Caller needs to do this around both this *and* handle_parsed_txs
     //auto lock = incoming_tx_lock();
-    std::vector<tx_verification_batch_info> tx_info(tx_blobs.size());
+    std::vector<cryptonote::tx_verification_batch_info> tx_info(tx_blobs.size());
 
     tools::threadpool& tpool = tools::threadpool::getInstance();
     tools::threadpool::waiter waiter;
@@ -1393,7 +1399,7 @@ namespace cryptonote
     return ok;
   }
   //-----------------------------------------------------------------------------------------------
-  std::vector<core::tx_verification_batch_info> core::handle_incoming_txs(const std::vector<blobdata>& tx_blobs, const tx_pool_options &opts)
+  std::vector<cryptonote::tx_verification_batch_info> core::handle_incoming_txs(const std::vector<blobdata>& tx_blobs, const tx_pool_options &opts)
   {
     auto lock = incoming_tx_lock();
     auto parsed = parse_incoming_txs(tx_blobs, opts);
@@ -2108,6 +2114,7 @@ namespace cryptonote
         MERROR("Block found, but failed to prepare to add");
         return false;
       }
+      // add_new_block will verify block and set bvc.m_verification_failed accordingly
       add_new_block(b, bvc, nullptr /*checkpoint*/);
       cleanup_handle_incoming_blocks(true);
       m_miner.on_block_chain_update();

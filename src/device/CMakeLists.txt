@@ -41,6 +41,7 @@ target_link_libraries(device
     OpenSSL::Crypto
     Boost::serialization
   PRIVATE
+    SQLiteCpp
     version
     extra)
 

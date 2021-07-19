@@ -45,6 +45,7 @@
 //#include "cryptonote_core/cryptonote_core.h"
 #include "cryptonote_protocol/cryptonote_protocol_handler.h"
 #include "cryptonote_protocol/cryptonote_protocol_handler.inl"
+#include "cryptonote_core/cryptonote_tx_utils.h"
 #include "core_proxy.h"
 #include "version.h"
 
@@ -157,9 +158,9 @@ string tx2str(const cryptonote::transaction& tx, const cryptonote::hash256& tx_h
     return ss.str();
 }*/
 
-std::vector<cryptonote::core::tx_verification_batch_info> tests::proxy_core::parse_incoming_txs(const std::vector<cryptonote::blobdata>& tx_blobs, const tx_pool_options &opts) {
+std::vector<cryptonote::tx_verification_batch_info> tests::proxy_core::parse_incoming_txs(const std::vector<cryptonote::blobdata>& tx_blobs, const tx_pool_options &opts) {
 
-    std::vector<cryptonote::core::tx_verification_batch_info> tx_info(tx_blobs.size());
+    std::vector<cryptonote::tx_verification_batch_info> tx_info(tx_blobs.size());
 
     for (size_t i = 0; i < tx_blobs.size(); i++) {
         auto &txi = tx_info[i];
@@ -185,7 +186,7 @@ std::vector<cryptonote::core::tx_verification_batch_info> tests::proxy_core::par
     return tx_info;
 }
 
-bool tests::proxy_core::handle_parsed_txs(std::vector<cryptonote::core::tx_verification_batch_info> &parsed_txs, const tx_pool_options &opts, uint64_t *blink_rollback_height) {
+bool tests::proxy_core::handle_parsed_txs(std::vector<cryptonote::tx_verification_batch_info> &parsed_txs, const tx_pool_options &opts, uint64_t *blink_rollback_height) {
 
     if (blink_rollback_height) *blink_rollback_height = 0;
 
@@ -196,7 +197,7 @@ bool tests::proxy_core::handle_parsed_txs(std::vector<cryptonote::core::tx_verif
     return ok;
 }
 
-std::vector<core::tx_verification_batch_info> tests::proxy_core::handle_incoming_txs(const std::vector<blobdata>& tx_blobs, const tx_pool_options &opts)
+std::vector<tx_verification_batch_info> tests::proxy_core::handle_incoming_txs(const std::vector<blobdata>& tx_blobs, const tx_pool_options &opts)
 {
     auto parsed = parse_incoming_txs(tx_blobs, opts);
     handle_parsed_txs(parsed, opts);

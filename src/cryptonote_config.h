@@ -257,6 +257,11 @@ namespace config
   inline constexpr std::string_view HASH_KEY_CLSAG_AGG_0 = "CLSAG_agg_0"sv;
   inline constexpr std::string_view HASH_KEY_CLSAG_AGG_1 = "CLSAG_agg_1"sv;
 
+  //Batching SN Rewards
+  inline constexpr uint64_t BATCHING_INTERVAL = 6;
+  inline constexpr uint64_t MIN_BATCH_PAYMENT_AMOUNT = 10;
+  inline constexpr uint64_t LIMIT_BATCH_OUTPUTS = 15;
+
   namespace testnet
   {
     inline constexpr uint64_t HEIGHT_ESTIMATE_HEIGHT = 339767;
@@ -390,6 +395,10 @@ namespace cryptonote
     std::chrono::seconds UPTIME_PROOF_FREQUENCY;
     std::chrono::seconds UPTIME_PROOF_VALIDITY;
 
+    uint64_t BATCHING_INTERVAL;
+    uint64_t MIN_BATCH_PAYMENT_AMOUNT;
+    uint64_t LIMIT_BATCH_OUTPUTS;
+
     inline constexpr std::string_view governance_wallet_address(int hard_fork_version) const {
       const auto wallet_switch =
         (NETWORK_TYPE == MAINNET || NETWORK_TYPE == FAKECHAIN)
@@ -419,6 +428,9 @@ namespace cryptonote
     config::UPTIME_PROOF_CHECK_INTERVAL,
     config::UPTIME_PROOF_FREQUENCY,
     config::UPTIME_PROOF_VALIDITY,
+    config::BATCHING_INTERVAL,
+    config::MIN_BATCH_PAYMENT_AMOUNT,
+    config::LIMIT_BATCH_OUTPUTS,
   };
   inline constexpr network_config testnet_config{
     TESTNET,
@@ -441,6 +453,9 @@ namespace cryptonote
     config::UPTIME_PROOF_CHECK_INTERVAL,
     config::testnet::UPTIME_PROOF_FREQUENCY,
     config::testnet::UPTIME_PROOF_VALIDITY,
+    config::BATCHING_INTERVAL,
+    config::MIN_BATCH_PAYMENT_AMOUNT,
+    config::LIMIT_BATCH_OUTPUTS,
   };
   inline constexpr network_config devnet_config{
     DEVNET,
@@ -463,6 +478,9 @@ namespace cryptonote
     config::UPTIME_PROOF_CHECK_INTERVAL,
     config::testnet::UPTIME_PROOF_FREQUENCY,
     config::testnet::UPTIME_PROOF_VALIDITY,
+    config::BATCHING_INTERVAL,
+    config::MIN_BATCH_PAYMENT_AMOUNT,
+    config::LIMIT_BATCH_OUTPUTS,
   };
   inline constexpr network_config fakenet_config{
     FAKECHAIN,
@@ -485,6 +503,9 @@ namespace cryptonote
     config::fakechain::UPTIME_PROOF_CHECK_INTERVAL,
     config::fakechain::UPTIME_PROOF_FREQUENCY,
     config::fakechain::UPTIME_PROOF_VALIDITY,
+    config::BATCHING_INTERVAL,
+    config::MIN_BATCH_PAYMENT_AMOUNT,
+    config::LIMIT_BATCH_OUTPUTS,
   };
 
   inline constexpr const network_config& get_config(network_type nettype)

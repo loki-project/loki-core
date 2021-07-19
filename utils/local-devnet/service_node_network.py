@@ -79,6 +79,7 @@ class SNNetwork:
                 if i != k:
                     self.all_nodes[i].add_peer(self.all_nodes[k])
 
+
         vprint("Starting new oxend service nodes with RPC on {} ports".format(self.sns[0].listen_ip), end="")
         for sn in self.sns:
             vprint(" {}".format(sn.rpc_port), end="", flush=True, timestamp=False)
@@ -106,6 +107,10 @@ class SNNetwork:
 
         for w in self.wallets:
             w.wait_for_json_rpc("refresh")
+
+        configfile=self.datadir+'config.py'
+        with open(configfile, 'w') as filetowrite:
+            filetowrite.write('#!/usr/bin/python3\n# -*- coding: utf-8 -*-\nlisten_ip=\"{}\"\nlisten_port=\"{}\"\nwallet_listen_ip=\"{}\"\nwallet_listen_port=\"{}\"\nwallet_address=\"{}\"\nexternal_address=\"{}\"'.format(self.sns[0].listen_ip,self.sns[0].rpc_port,self.mike.listen_ip,self.mike.rpc_port,self.mike.address(),self.bob.address()))
 
         # Mine some blocks; we need 100 per SN registration, and we can nearly 600 on fakenet before
         # it hits HF16 and kills mining rewards.  This lets us submit the first 5 SN registrations a
@@ -166,9 +171,9 @@ class SNNetwork:
 
         vprint("Local Devnet SN network setup complete!")
         vprint("Communicate with daemon on ip: {} port: {}".format(self.sns[0].listen_ip,self.sns[0].rpc_port))
-        configfile=self.datadir+'config.py'
-        with open(configfile, 'w') as filetowrite:
-            filetowrite.write('#!/usr/bin/python3\n# -*- coding: utf-8 -*-\nlisten_ip=\"{}\"\nlisten_port=\"{}\"\nwallet_listen_ip=\"{}\"\nwallet_listen_port=\"{}\"\nwallet_address=\"{}\"\nexternal_address=\"{}\"'.format(self.sns[0].listen_ip,self.sns[0].rpc_port,self.mike.listen_ip,self.mike.rpc_port,self.mike.address(),self.bob.address()))
+
+        # TODO sean remove: Mine 1 more to cause crash
+        self.sync_nodes(self.mine(1))
 
 
 

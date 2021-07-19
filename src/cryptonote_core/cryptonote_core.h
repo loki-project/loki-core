@@ -183,22 +183,6 @@ namespace cryptonote
       */
      bool handle_incoming_tx(const blobdata& tx_blob, tx_verification_context& tvc, const tx_pool_options &opts);
 
-     /**
-      * Returned type of parse_incoming_txs() that provides details about which transactions failed
-      * and why.  This is passed on to handle_parsed_txs() (potentially after modification such as
-      * setting `approved_blink`) to handle_parsed_txs() to actually insert the transactions.
-      */
-     struct tx_verification_batch_info {
-       tx_verification_context tvc{}; // Verification information
-       bool parsed = false; // Will be true if we were able to at least parse the transaction
-       bool result = false; // Indicates that the transaction was parsed and passed some basic checks
-       bool already_have = false; // Indicates that the tx was found to already exist (in mempool or blockchain)
-       bool approved_blink = false; // Can be set between the parse and handle calls to make this a blink tx (that replaces conflicting non-blink txes)
-       const blobdata *blob = nullptr; // Will be set to a pointer to the incoming blobdata (i.e. string). caller must keep it alive!
-       crypto::hash tx_hash; // The transaction hash (only set if `parsed`)
-       transaction tx; // The parsed transaction (only set if `parsed`)
-     };
-
      /// Returns an RAII unique lock holding the incoming tx mutex.
      auto incoming_tx_lock() { return std::unique_lock{m_incoming_tx_lock}; }
 
@@ -218,7 +202,7 @@ namespace cryptonote
       *
       * @return vector of tx_verification_batch_info structs for the given transactions.
       */
-     std::vector<tx_verification_batch_info> parse_incoming_txs(const std::vector<blobdata>& tx_blobs, const tx_pool_options &opts);
+     std::vector<cryptonote::tx_verification_batch_info> parse_incoming_txs(const std::vector<blobdata>& tx_blobs, const tx_pool_options &opts);
 
      /**
       * @brief handles parsed incoming transactions

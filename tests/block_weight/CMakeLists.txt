@@ -32,6 +32,7 @@ target_link_libraries(block_weight
   PRIVATE
     cryptonote_core
     blockchain_db
+    SQLiteCpp
     extra)
 
 add_test(

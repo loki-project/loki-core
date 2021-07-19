@@ -142,7 +142,7 @@ int main(int argc, char* argv[])
     LOG_PRINT_L0("Error opening database: " << e.what());
     return 1;
   }
-  r = core_storage->init(db, nullptr, opt_testnet ? cryptonote::TESTNET : opt_devnet ? cryptonote::DEVNET : cryptonote::MAINNET);
+  r = core_storage->init(db, nullptr, nullptr, opt_testnet ? cryptonote::TESTNET : opt_devnet ? cryptonote::DEVNET : cryptonote::MAINNET);
 
   if (core_storage->get_blockchain_pruning_seed() && !opt_blocks_dat)
   {

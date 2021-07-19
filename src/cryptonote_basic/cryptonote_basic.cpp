@@ -82,7 +82,10 @@ block::block(const block& b) :
   block_header(b),
   miner_tx{b.miner_tx},
   tx_hashes{b.tx_hashes},
-  signatures{b.signatures}
+  signatures{b.signatures},
+  height{b.height},
+  service_node_winner_key{b.service_node_winner_key},
+  reward{b.reward}
 {
   copy_hash(b);
 }
@@ -91,7 +94,10 @@ block::block(block&& b) :
   block_header(std::move(b)),
   miner_tx{std::move(b.miner_tx)},
   tx_hashes{std::move(b.tx_hashes)},
-  signatures{std::move(b.signatures)}
+  signatures{std::move(b.signatures)},
+  height{std::move(b.height)},
+  service_node_winner_key{std::move(b.service_node_winner_key)},
+  reward{std::move(b.reward)}
 {
   copy_hash(b);
 }
@@ -102,6 +108,9 @@ block& block::operator=(const block& b)
   miner_tx = b.miner_tx;
   tx_hashes = b.tx_hashes;
   signatures = b.signatures;
+  height = b.height;
+  service_node_winner_key = b.service_node_winner_key;
+  reward = b.reward;
   copy_hash(b);
   return *this;
 }
@@ -111,6 +120,9 @@ block& block::operator=(block&& b)
   miner_tx = std::move(b.miner_tx);
   tx_hashes = std::move(b.tx_hashes);
   signatures = std::move(b.signatures);
+  height = std::move(b.height);
+  service_node_winner_key = std::move(b.service_node_winner_key);
+  reward = std::move(b.reward);
   copy_hash(b);
   return *this;
 }

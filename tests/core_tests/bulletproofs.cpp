@@ -82,6 +82,7 @@ bool gen_bp_tx_validation_base::generate_with(std::vector<test_event_entry>& eve
   uint8_t const last_hf  = hard_forks.back().version;
   generator.m_hf_version = first_hf;
   for (size_t n = 0; n < NUM_UNLOCKED_BLOCKS; ++n) {
+    MINFO(__FILE__ << ":" << __LINE__ << " TODO sean remove this - AAAAAAAAAA - debug");
     CHECK_AND_ASSERT_MES(
         generator.construct_block_manually(blocks[n],
                                            *prev_block,
